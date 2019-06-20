@@ -250,8 +250,7 @@ bool ApplyEnclosesArgs(ParseNode* fncDecl, ByteCodeGenerator* byteCodeGenerator)
 void Emit(ParseNode *pnode, ByteCodeGenerator *byteCodeGenerator, FuncInfo *funcInfo, BOOL fReturnValue, bool isConstructorCall = false, ParseNode *bindPnode = nullptr, bool isTopLevel = false);
 void EmitBinaryOpnds(ParseNode *pnode1, ParseNode *pnode2, ByteCodeGenerator *byteCodeGenerator, FuncInfo *funcInfo);
 bool IsExpressionStatement(ParseNode* stmt, const Js::ScriptContext *const scriptContext);
-void EmitInvoke(Js::RegSlot location, Js::RegSlot callObjLocation, Js::PropertyId propertyId, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo);
-void EmitInvoke(Js::RegSlot location, Js::RegSlot callObjLocation, Js::PropertyId propertyId, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo, Js::RegSlot arg1Location);
+void EmitInvoke(Js::RegSlot location, Js::RegSlot callObjLocation, Js::PropertyId propertyId, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo, Js::RegSlot arg1Location = Js::Constants::NoRegister);
 
 static const Js::OpCode nopToOp[knopLim] =
 {
@@ -8383,39 +8382,25 @@ void EmitInvoke(
     Js::RegSlot callObjLocation,
     Js::PropertyId propertyId,
     ByteCodeGenerator* byteCodeGenerator,
-    FuncInfo* funcInfo)
-{
-    EmitMethodFld(false, false, location, callObjLocation, propertyId, byteCodeGenerator, funcInfo);
-
-    funcInfo->StartRecordingOutArgs(1);
-
-    Js::ProfileId callSiteId = byteCodeGenerator->GetNextCallSiteId(Js::OpCode::CallI);
-
-    byteCodeGenerator->Writer()->StartCall(Js::OpCode::StartCall, 1);
-    EmitArgListStart(callObjLocation, byteCodeGenerator, funcInfo, callSiteId);
-
-    byteCodeGenerator->Writer()->CallI(Js::OpCode::CallI, location, location, 1, callSiteId);
-}
-
-void EmitInvoke(
-    Js::RegSlot location,
-    Js::RegSlot callObjLocation,
-    Js::PropertyId propertyId,
-    ByteCodeGenerator* byteCodeGenerator,
     FuncInfo* funcInfo,
     Js::RegSlot arg1Location)
 {
     EmitMethodFld(false, false, location, callObjLocation, propertyId, byteCodeGenerator, funcInfo);
+    Js::ArgSlot argCount = arg1Location == Js::Constants::NoRegister ? 1 : 2;
 
-    funcInfo->StartRecordingOutArgs(2);
+    funcInfo->StartRecordingOutArgs(argCount);
 
     Js::ProfileId callSiteId = byteCodeGenerator->GetNextCallSiteId(Js::OpCode::CallI);
 
-    byteCodeGenerator->Writer()->StartCall(Js::OpCode::StartCall, 2);
+    byteCodeGenerator->Writer()->StartCall(Js::OpCode::StartCall, argCount);
     EmitArgListStart(callObjLocation, byteCodeGenerator, funcInfo, callSiteId);
-    byteCodeGenerator->Writer()->ArgOut<true>(1, arg1Location, callSiteId, false /*emitProfiledArgout*/);
 
-    byteCodeGenerator->Writer()->CallI(Js::OpCode::CallI, location, location, 2, callSiteId);
+    if (argCount > 1)
+    {
+        byteCodeGenerator->Writer()->ArgOut<true>(1, arg1Location, callSiteId, false /*emitProfiledArgout*/);
+    }
+
+    byteCodeGenerator->Writer()->CallI(Js::OpCode::CallI, location, location, argCount, callSiteId);
 }
 
 void EmitComputedFunctionNameVar(ParseNode *nameNode, ParseNodeFnc *exprNode, ByteCodeGenerator *byteCodeGenerator)
@@ -9463,16 +9448,7 @@ void EmitGetIterator(Js::RegSlot iteratorLocation, Js::RegSlot iterableLocation,
 
 void EmitIteratorNext(Js::RegSlot itemLocation, Js::RegSlot iteratorLocation, Js::RegSlot nextInputLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo)
 {
-    // invoke next() on the iterator
-    if (nextInputLocation == Js::Constants::NoRegister)
-    {
-        EmitInvoke(itemLocation, iteratorLocation, Js::PropertyIds::next, byteCodeGenerator, funcInfo);
-    }
-    else
-    {
-        EmitInvoke(itemLocation, iteratorLocation, Js::PropertyIds::next, byteCodeGenerator, funcInfo, nextInputLocation);
-    }
-
+    EmitInvoke(itemLocation, iteratorLocation, Js::PropertyIds::next, byteCodeGenerator, funcInfo, nextInputLocation);
     EmitThrowOnNonObject(iteratorLocation, byteCodeGenerator);
 }
 
