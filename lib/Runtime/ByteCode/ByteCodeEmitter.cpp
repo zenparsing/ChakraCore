@@ -9411,6 +9411,14 @@ void ByteCodeGenerator::EmitInvertedLoop(ParseNodeLoop* outerLoop, ParseNodeFor*
     this->m_writer.MarkLabel(afterInvertedLoop);
 }
 
+void EmitThrowOnNonObject(Js::RegSlot location, ByteCodeGenerator* byteCodeGenerator)
+{
+    Js::ByteCodeLabel skipThrow = byteCodeGenerator->Writer()->DefineLabel();
+    byteCodeGenerator->Writer()->BrReg1(Js::OpCode::BrOnObject_A, skipThrow, location);
+    byteCodeGenerator->Writer()->W1(Js::OpCode::RuntimeTypeError, SCODE_CODE(JSERR_NeedObject));
+    byteCodeGenerator->Writer()->MarkLabel(skipThrow);
+}
+
 void EmitGetIterator(Js::RegSlot iteratorLocation, Js::RegSlot iterableLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo, bool isAsync)
 {
     // get iterator object from the iterable
@@ -9450,11 +9458,7 @@ void EmitGetIterator(Js::RegSlot iteratorLocation, Js::RegSlot iterableLocation,
         byteCodeGenerator->Writer()->MarkLabel(skipLabel);
     }
 
-    // throw TypeError if the result is not an object
-    Js::ByteCodeLabel skipThrow = byteCodeGenerator->Writer()->DefineLabel();
-    byteCodeGenerator->Writer()->BrReg1(Js::OpCode::BrOnObject_A, skipThrow, iteratorLocation);
-    byteCodeGenerator->Writer()->W1(Js::OpCode::RuntimeTypeError, SCODE_CODE(JSERR_NeedObject));
-    byteCodeGenerator->Writer()->MarkLabel(skipThrow);
+    EmitThrowOnNonObject(iteratorLocation, byteCodeGenerator);
 }
 
 void EmitIteratorNext(Js::RegSlot itemLocation, Js::RegSlot iteratorLocation, Js::RegSlot nextInputLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo)
@@ -9469,11 +9473,7 @@ void EmitIteratorNext(Js::RegSlot itemLocation, Js::RegSlot iteratorLocation, Js
         EmitInvoke(itemLocation, iteratorLocation, Js::PropertyIds::next, byteCodeGenerator, funcInfo, nextInputLocation);
     }
 
-    // throw TypeError if the result is not an object
-    Js::ByteCodeLabel skipThrow = byteCodeGenerator->Writer()->DefineLabel();
-    byteCodeGenerator->Writer()->BrReg1(Js::OpCode::BrOnObject_A, skipThrow, itemLocation);
-    byteCodeGenerator->Writer()->W1(Js::OpCode::RuntimeTypeError, SCODE_CODE(JSERR_NeedObject));
-    byteCodeGenerator->Writer()->MarkLabel(skipThrow);
+    EmitThrowOnNonObject(iteratorLocation, byteCodeGenerator);
 }
 
 // Generating
@@ -9487,7 +9487,6 @@ void EmitIteratorClose(Js::RegSlot iteratorLocation, ByteCodeGenerator* byteCode
 {
     Js::RegSlot returnLocation = funcInfo->AcquireTmpRegister();
 
-    Js::ByteCodeLabel skipThrow = byteCodeGenerator->Writer()->DefineLabel();
     Js::ByteCodeLabel noReturn = byteCodeGenerator->Writer()->DefineLabel();
 
     uint cacheId = funcInfo->FindOrAddInlineCacheId(iteratorLocation, Js::PropertyIds::return_, false, false);
@@ -9503,10 +9502,7 @@ void EmitIteratorClose(Js::RegSlot iteratorLocation, ByteCodeGenerator* byteCode
         EmitAwait(returnLocation, returnLocation, byteCodeGenerator, funcInfo);
     }
 
-    // throw TypeError if the result is not an Object
-    byteCodeGenerator->Writer()->BrReg1(Js::OpCode::BrOnObject_A, skipThrow, returnLocation);
-    byteCodeGenerator->Writer()->W1(Js::OpCode::RuntimeTypeError, SCODE_CODE(JSERR_NeedObject));
-    byteCodeGenerator->Writer()->MarkLabel(skipThrow);
+    EmitThrowOnNonObject(iteratorLocation, byteCodeGenerator);
     byteCodeGenerator->Writer()->MarkLabel(noReturn);
 
     funcInfo->ReleaseTmpRegister(returnLocation);
@@ -10308,10 +10304,7 @@ void EmitYieldStar(ParseNodeUni* yieldStarNode, ByteCodeGenerator* byteCodeGener
     {
         byteCodeGenerator->Writer()->Reg2(Js::OpCode::AsyncYieldIsReturn, isReturn, funcInfo->yieldRegister);
         EmitAwait(yieldStarNode->location, yieldStarNode->location, byteCodeGenerator, funcInfo);
-        Js::ByteCodeLabel skipThrow = byteCodeGenerator->Writer()->DefineLabel();
-        byteCodeGenerator->Writer()->BrReg1(Js::OpCode::BrOnObject_A, skipThrow, iteratorLocation);
-        byteCodeGenerator->Writer()->W1(Js::OpCode::RuntimeTypeError, SCODE_CODE(JSERR_NeedObject));
-        byteCodeGenerator->Writer()->MarkLabel(skipThrow);
+        EmitThrowOnNonObject(iteratorLocation, byteCodeGenerator);
     }
 
     Js::RegSlot doneLocation = funcInfo->AcquireTmpRegister();
