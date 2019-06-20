@@ -6059,7 +6059,7 @@ void EmitReference(ParseNode *pnode, ByteCodeGenerator *byteCodeGenerator, FuncI
 }
 
 void EmitGetIterator(Js::RegSlot iteratorLocation, Js::RegSlot iterableLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo, bool isAsync = false);
-void EmitIteratorNext(Js::RegSlot itemLocation, Js::RegSlot iteratorLocation, Js::RegSlot nextInputLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo);
+void EmitIteratorNext(Js::RegSlot itemLocation, Js::RegSlot iteratorLocation, Js::RegSlot argLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo, bool isAsync = false);
 void EmitIteratorClose(Js::RegSlot iteratorLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo, bool isAsync = false);
 void EmitIteratorComplete(Js::RegSlot doneLocation, Js::RegSlot iteratorResultLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo);
 void EmitIteratorValue(Js::RegSlot valueLocation, Js::RegSlot iteratorResultLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo);
@@ -9404,7 +9404,12 @@ void EmitThrowOnNonObject(Js::RegSlot location, ByteCodeGenerator* byteCodeGener
     byteCodeGenerator->Writer()->MarkLabel(skipThrow);
 }
 
-void EmitGetIterator(Js::RegSlot iteratorLocation, Js::RegSlot iterableLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo, bool isAsync)
+void EmitGetIterator(
+    Js::RegSlot iteratorLocation,
+    Js::RegSlot iterableLocation,
+    ByteCodeGenerator* byteCodeGenerator,
+    FuncInfo* funcInfo,
+    bool isAsync)
 {
     // get iterator object from the iterable
     if (!isAsync)
@@ -9446,10 +9451,22 @@ void EmitGetIterator(Js::RegSlot iteratorLocation, Js::RegSlot iterableLocation,
     EmitThrowOnNonObject(iteratorLocation, byteCodeGenerator);
 }
 
-void EmitIteratorNext(Js::RegSlot itemLocation, Js::RegSlot iteratorLocation, Js::RegSlot nextInputLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo)
+void EmitIteratorNext(
+    Js::RegSlot itemLocation,
+    Js::RegSlot iteratorLocation,
+    Js::RegSlot argLocation,
+    ByteCodeGenerator* byteCodeGenerator,
+    FuncInfo* funcInfo,
+    bool isAsync)
 {
-    EmitInvoke(itemLocation, iteratorLocation, Js::PropertyIds::next, byteCodeGenerator, funcInfo, nextInputLocation);
-    EmitThrowOnNonObject(iteratorLocation, byteCodeGenerator);
+    EmitInvoke(itemLocation, iteratorLocation, Js::PropertyIds::next, byteCodeGenerator, funcInfo, argLocation);
+
+    if (isAsync)
+    {
+        EmitAwait(itemLocation, itemLocation, byteCodeGenerator, funcInfo);
+    }
+
+    EmitThrowOnNonObject(itemLocation, byteCodeGenerator);
 }
 
 // Generating
@@ -9742,13 +9759,7 @@ void EmitForInOrForOf(ParseNodeForInOrForOf *loopNode, ByteCodeGenerator *byteCo
     byteCodeGenerator->Writer()->Reg1(Js::OpCode::LdFalse, shouldCallReturnFunctionLocation);
     byteCodeGenerator->Writer()->Reg1(Js::OpCode::LdFalse, shouldCallReturnFunctionLocationFinally);
 
-    EmitIteratorNext(loopNode->itemLocation, loopNode->location, Js::Constants::NoRegister, byteCodeGenerator, funcInfo);
-
-    // if this is a for-await-of then await the iterator next result
-    if (isForAwaitOf)
-    {
-        EmitAwait(loopNode->itemLocation, loopNode->itemLocation, byteCodeGenerator, funcInfo);
-    }
+    EmitIteratorNext(loopNode->itemLocation, loopNode->location, Js::Constants::NoRegister, byteCodeGenerator, funcInfo, isForAwaitOf);
 
     Js::RegSlot doneLocation = funcInfo->AcquireTmpRegister();
     EmitIteratorComplete(doneLocation, loopNode->itemLocation, byteCodeGenerator, funcInfo);
@@ -9759,12 +9770,6 @@ void EmitForInOrForOf(ParseNodeForInOrForOf *loopNode, ByteCodeGenerator *byteCo
 
     // otherwise put result's value property in itemLocation
     EmitIteratorValue(loopNode->itemLocation, loopNode->itemLocation, byteCodeGenerator, funcInfo);
-
-    // in a for await of loop use await on the yielded value
-    if (isForAwaitOf)
-    {
-        EmitAwait(loopNode->itemLocation, loopNode->itemLocation, byteCodeGenerator, funcInfo);
-    }
 
     byteCodeGenerator->Writer()->Reg1(Js::OpCode::LdTrue, shouldCallReturnFunctionLocation);
     byteCodeGenerator->Writer()->Reg1(Js::OpCode::LdTrue, shouldCallReturnFunctionLocationFinally);
@@ -10252,6 +10257,7 @@ void EmitYield(Js::RegSlot inputLocation, Js::RegSlot resultLocation, ByteCodeGe
 
 void EmitYieldStar(ParseNodeUni* yieldStarNode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo)
 {
+    bool isAsyncGen = funcInfo->IsAsyncGenerator();
     funcInfo->AcquireLoc(yieldStarNode);
 
     Js::ByteCodeLabel loopEntrance = byteCodeGenerator->Writer()->DefineLabel();
@@ -10263,11 +10269,11 @@ void EmitYieldStar(ParseNodeUni* yieldStarNode, ByteCodeGenerator* byteCodeGener
     // Evaluate operand
     Emit(yieldStarNode->pnode1, byteCodeGenerator, funcInfo, false);
 
-    EmitGetIterator(iteratorLocation, yieldStarNode->pnode1->location, byteCodeGenerator, funcInfo, funcInfo->IsAsyncGenerator());
+    EmitGetIterator(iteratorLocation, yieldStarNode->pnode1->location, byteCodeGenerator, funcInfo, isAsyncGen);
     funcInfo->ReleaseLoc(yieldStarNode->pnode1);
 
-    // Call the iterator's next()
-    EmitIteratorNext(yieldStarNode->location, iteratorLocation, funcInfo->undefinedConstantRegister, byteCodeGenerator, funcInfo);
+    // Call the iterator's next method
+    EmitIteratorNext(yieldStarNode->location, iteratorLocation, funcInfo->undefinedConstantRegister, byteCodeGenerator, funcInfo/*, isAsyncGen */);
 
     uint loopId = byteCodeGenerator->Writer()->EnterLoop(loopEntrance);
 
@@ -10276,7 +10282,7 @@ void EmitYieldStar(ParseNodeUni* yieldStarNode, ByteCodeGenerator* byteCodeGener
     // remember the loopId like the loop statements do.
 
     // if this is an async generator then await the yielded value
-    if (funcInfo->IsAsyncGenerator())
+    if (isAsyncGen)
     {
         byteCodeGenerator->Writer()->Reg2(Js::OpCode::AsyncYieldIsReturn, isReturn, funcInfo->yieldRegister);
         EmitAwait(yieldStarNode->location, yieldStarNode->location, byteCodeGenerator, funcInfo);
@@ -10290,7 +10296,7 @@ void EmitYieldStar(ParseNodeUni* yieldStarNode, ByteCodeGenerator* byteCodeGener
     byteCodeGenerator->Writer()->BrReg1(Js::OpCode::BrTrue_A, continuePastLoop, doneLocation);
     funcInfo->ReleaseTmpRegister(doneLocation);
 
-    if (funcInfo->IsAsyncGenerator())
+    if (isAsyncGen)
     {
         byteCodeGenerator->Writer()->Reg2(Js::OpCode::AsyncYieldStar, funcInfo->yieldRegister, yieldStarNode->location);
     }
@@ -10307,7 +10313,7 @@ void EmitYieldStar(ParseNodeUni* yieldStarNode, ByteCodeGenerator* byteCodeGener
     byteCodeGenerator->Writer()->MarkLabel(continuePastLoop);
     byteCodeGenerator->Writer()->ExitLoop(loopId);
 
-    if (funcInfo->IsAsyncGenerator())
+    if (isAsyncGen)
     {
         Js::ByteCodeLabel notReturn = byteCodeGenerator->Writer()->DefineLabel();
         byteCodeGenerator->Writer()->BrReg1(Js::OpCode::BrFalse_A, notReturn, isReturn);
