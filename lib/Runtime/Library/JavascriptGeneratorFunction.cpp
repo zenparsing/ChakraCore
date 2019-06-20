@@ -6,6 +6,19 @@
 
 using namespace Js;
 
+    namespace {
+
+        Arguments CopyArgumentsToHeap(ArgumentReader& stackArgs, CallInfo callInfo, ScriptContext* scriptContext)
+        {
+            // InterpreterStackFrame takes a pointer to the args, so copy them to the recycler heap
+            // and use that buffer for this InterpreterStackFrame.
+            Field(Var)* argsHeapCopy = RecyclerNewArray(scriptContext->GetRecycler(), Field(Var), stackArgs.Info.Count);
+            CopyArray(argsHeapCopy, stackArgs.Info.Count, stackArgs.Values, stackArgs.Info.Count);
+            return Arguments(callInfo, unsafe_write_barrier_cast<Var*>(argsHeapCopy));
+        }
+
+    }
+
     FunctionInfo JavascriptGeneratorFunction::functionInfo(
         FORCE_NO_WRITE_BARRIER_TAG(JavascriptGeneratorFunction::EntryGeneratorFunctionImplementation),
         (FunctionInfo::Attributes)(FunctionInfo::DoNotProfile | FunctionInfo::ErrorOnNew));
@@ -150,7 +163,10 @@ using namespace Js;
         JIT_HELPER_END(ScrFunc_OP_NewScGenFuncHomeObj);
     }
 
-    Var JavascriptGeneratorFunction::EntryGeneratorFunctionImplementation(RecyclableObject* function, CallInfo callInfo, ...)
+    Var JavascriptGeneratorFunction::EntryGeneratorFunctionImplementation(
+        RecyclableObject* function,
+        CallInfo callInfo,
+        ...)
     {
         PROBE_STACK(function->GetScriptContext(), Js::Constants::MinStackDefault);
         ARGUMENTS(stackArgs, callInfo);
@@ -158,30 +174,37 @@ using namespace Js;
         Assert(!(callInfo.Flags & CallFlags_New));
 
         ScriptContext* scriptContext = function->GetScriptContext();
-        JavascriptGeneratorFunction* generatorFunction = VarTo<JavascriptGeneratorFunction>(function);
+        JavascriptLibrary* library = scriptContext->GetLibrary();
+        Arguments heapArgs = CopyArgumentsToHeap(stackArgs, callInfo, scriptContext);
+        DynamicObject* prototype = library->CreateGeneratorConstructorPrototypeObject();
 
-        // InterpreterStackFrame takes a pointer to the args, so copy them to the recycler heap
-        // and use that buffer for this InterpreterStackFrame.
-        Field(Var)* argsHeapCopy = RecyclerNewArray(scriptContext->GetRecycler(), Field(Var), stackArgs.Info.Count);
-        CopyArray(argsHeapCopy, stackArgs.Info.Count, stackArgs.Values, stackArgs.Info.Count);
-        Arguments heapArgs(callInfo, unsafe_write_barrier_cast<Var*>(argsHeapCopy));
+        JavascriptGenerator* generator = library->CreateGenerator(
+            heapArgs,
+            VarTo<JavascriptGeneratorFunction>(function)->scriptFunction,
+            prototype);
 
-        DynamicObject* prototype = scriptContext->GetLibrary()->CreateGeneratorConstructorPrototypeObject();
-        JavascriptGenerator* generator = scriptContext->GetLibrary()->CreateGenerator(heapArgs, generatorFunction->scriptFunction, prototype);
         // Set the prototype from constructor
         JavascriptOperators::OrdinaryCreateFromConstructor(function, generator, prototype, scriptContext);
 
-        // Call a next on the generator to execute till the beginning of the body
+        // Call next on the generator to execute until the beginning of the body
         BEGIN_SAFE_REENTRANT_CALL(scriptContext->GetThreadContext())
         {
-            CALL_ENTRYPOINT(scriptContext->GetThreadContext(), generator->EntryNext, function, CallInfo(CallFlags_Value, 1), generator);
+            CALL_ENTRYPOINT(
+                scriptContext->GetThreadContext(),
+                generator->EntryNext,
+                function,
+                CallInfo(CallFlags_Value, 1),
+                generator);
         }
         END_SAFE_REENTRANT_CALL
 
         return generator;
     }
 
-    Var JavascriptGeneratorFunction::EntryAsyncGeneratorFunctionImplementation(RecyclableObject* function, CallInfo callInfo, ...)
+    Var JavascriptGeneratorFunction::EntryAsyncGeneratorFunctionImplementation(
+        RecyclableObject* function,
+        CallInfo callInfo,
+        ...)
     {
         PROBE_STACK(function->GetScriptContext(), Js::Constants::MinStackDefault);
         ARGUMENTS(stackArgs, callInfo);
@@ -189,54 +212,75 @@ using namespace Js;
         Assert(!(callInfo.Flags & CallFlags_New));
 
         ScriptContext* scriptContext = function->GetScriptContext();
-        JavascriptAsyncGeneratorFunction* asyncGeneratorFunction = VarTo<JavascriptAsyncGeneratorFunction>(function);
+        JavascriptLibrary* library = scriptContext->GetLibrary();
+        Arguments heapArgs = CopyArgumentsToHeap(stackArgs, callInfo, scriptContext);
+        DynamicObject* prototype = library->CreateAsyncGeneratorConstructorPrototypeObject();
 
-        // InterpreterStackFrame takes a pointer to the args, so copy them to the recycler heap
-        // and use that buffer for this InterpreterStackFrame.
-        Field(Var)* argsHeapCopy = RecyclerNewArray(scriptContext->GetRecycler(), Field(Var), stackArgs.Info.Count);
-        CopyArray(argsHeapCopy, stackArgs.Info.Count, stackArgs.Values, stackArgs.Info.Count);
-        Arguments heapArgs(callInfo, unsafe_write_barrier_cast<Var*>(argsHeapCopy));
+        JavascriptGenerator* generator = library->CreateGenerator(
+            heapArgs,
+            VarTo<JavascriptGeneratorFunction>(function)->scriptFunction,
+            prototype);
 
-        DynamicObject* prototype = scriptContext->GetLibrary()->CreateAsyncGeneratorConstructorPrototypeObject();
-        JavascriptGenerator* generator = scriptContext->GetLibrary()->CreateGenerator(heapArgs, asyncGeneratorFunction->scriptFunction, prototype);
         generator->SetIsAsync();
         generator->InitialiseAsyncGenerator(scriptContext);
+
         // Set the prototype from constructor
         JavascriptOperators::OrdinaryCreateFromConstructor(function, generator, prototype, scriptContext);
+
+        /*
+        Would prefer to keep things simple like this:
+        // Call next on the generator to execute until the beginning of the body
+        BEGIN_SAFE_REENTRANT_CALL(scriptContext->GetThreadContext())
+        {
+            CALL_ENTRYPOINT(
+                scriptContext->GetThreadContext(),
+                generator->EntryNext,
+                function,
+                CallInfo(CallFlags_Value, 1),
+                generator);
+        }
+        END_SAFE_REENTRANT_CALL
+        */
+
         return generator;
     }
 
-    Var JavascriptGeneratorFunction::EntryAsyncFunctionImplementation(RecyclableObject* function, CallInfo callInfo, ...)
+    Var JavascriptGeneratorFunction::EntryAsyncFunctionImplementation(
+        RecyclableObject* function,
+        CallInfo callInfo,
+        ...)
     {
         PROBE_STACK(function->GetScriptContext(), Js::Constants::MinStackDefault);
         ARGUMENTS(stackArgs, callInfo);
 
         ScriptContext* scriptContext = function->GetScriptContext();
         JavascriptLibrary* library = scriptContext->GetLibrary();
-        RecyclableObject* prototype = scriptContext->GetLibrary()->GetNull();
+        Arguments heapArgs = CopyArgumentsToHeap(stackArgs, callInfo, scriptContext);
 
-        // InterpreterStackFrame takes a pointer to the args, so copy them to the recycler heap
-        // and use that buffer for this InterpreterStackFrame.
-        Field(Var)* argsHeapCopy = RecyclerNewArray(scriptContext->GetRecycler(), Field(Var), stackArgs.Info.Count);
-        CopyArray(argsHeapCopy, stackArgs.Info.Count, stackArgs.Values, stackArgs.Info.Count);
-        Arguments heapArgs(callInfo, unsafe_write_barrier_cast<Var*>(argsHeapCopy));
+        JavascriptGenerator* generator = library->CreateGenerator(
+            heapArgs,
+            VarTo<JavascriptGeneratorFunction>(function)->scriptFunction,
+            scriptContext->GetLibrary()->GetNull());
 
-        JavascriptExceptionObject* e = nullptr;
+        auto* executor = library->CreatePromiseAsyncSpawnExecutorFunction(generator, stackArgs[0]);
+        auto* promise = library->CreatePromise();
+
         JavascriptPromiseResolveOrRejectFunction* resolve;
         JavascriptPromiseResolveOrRejectFunction* reject;
-        JavascriptPromiseAsyncSpawnExecutorFunction* executor =
-            library->CreatePromiseAsyncSpawnExecutorFunction(
-                scriptContext->GetLibrary()->CreateGenerator(heapArgs, VarTo<JavascriptAsyncFunction>(function)->GetGeneratorVirtualScriptFunction(), prototype),
-                stackArgs[0]);
-
-        JavascriptPromise* promise = library->CreatePromise();
         JavascriptPromise::InitializePromise(promise, &resolve, &reject, scriptContext);
 
+        JavascriptExceptionObject* e = nullptr;
         try
         {
             BEGIN_SAFE_REENTRANT_CALL(scriptContext->GetThreadContext())
             {
-                CALL_FUNCTION(scriptContext->GetThreadContext(), executor, CallInfo(CallFlags_Value, 3), library->GetUndefined(), resolve, reject);
+                CALL_FUNCTION(
+                    scriptContext->GetThreadContext(),
+                    executor,
+                    CallInfo(CallFlags_Value, 3),
+                    library->GetUndefined(),
+                    resolve,
+                    reject);
             }
             END_SAFE_REENTRANT_CALL
         }
@@ -571,4 +615,3 @@ using namespace Js;
         TTD::NSSnapObjects::StdExtractSetKindSpecificInfo<TTD::NSSnapObjects::SnapGeneratorVirtualScriptFunctionInfo*, TTD::NSSnapObjects::SnapObjectType::SnapGeneratorVirtualScriptFunction>(objData, fi);
     }
 #endif
-
