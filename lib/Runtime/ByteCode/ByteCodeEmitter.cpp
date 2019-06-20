@@ -11,7 +11,7 @@ void EmitReference(ParseNode *pnode, ByteCodeGenerator *byteCodeGenerator, FuncI
 void EmitAssignment(ParseNode *asgnNode, ParseNode *lhs, Js::RegSlot rhsLocation, ByteCodeGenerator *byteCodeGenerator, FuncInfo *funcInfo);
 void EmitLoad(ParseNode *rhs, ByteCodeGenerator *byteCodeGenerator, FuncInfo *funcInfo);
 void EmitCall(ParseNodeCall* pnodeCall, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo, BOOL fReturnValue, BOOL fEvaluateComponents, Js::RegSlot overrideThisLocation = Js::Constants::NoRegister, Js::RegSlot newTargetLocation = Js::Constants::NoRegister);
-void EmitYield(Js::RegSlot inputLocation, Js::RegSlot resultLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo, bool isAsync = false, bool isAwait = false, Js::RegSlot yieldStarIterator = Js::Constants::NoRegister);
+void EmitYield(Js::RegSlot inputLocation, Js::RegSlot resultLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo, bool isAsync = false);
 void EmitAwait(Js::RegSlot inputLocation, Js::RegSlot resultLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo);
 
 void EmitUseBeforeDeclaration(Symbol *sym, ByteCodeGenerator *byteCodeGenerator, FuncInfo *funcInfo);
@@ -10254,11 +10254,14 @@ void EmitAwait(Js::RegSlot inputLocation, Js::RegSlot resultLocation, ByteCodeGe
     }
 }
 
-void EmitYield(Js::RegSlot inputLocation, Js::RegSlot resultLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo, bool isAsync, bool isAwait, Js::RegSlot yieldStarIterator)
+void EmitYield(Js::RegSlot inputLocation, Js::RegSlot resultLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo, bool isAsync)
 {
-    // If the bytecode emitted by this function is part of 'yield*', inputLocation is the object
-    // returned by the iterable's next/return/throw method. Otherwise, it is the yielded value.
-    if (yieldStarIterator == Js::Constants::NoRegister && !isAsync)
+    if (isAsync)
+    {
+        byteCodeGenerator->Writer()->Reg2(Js::OpCode::AsyncYield, funcInfo->yieldRegister, inputLocation);
+        byteCodeGenerator->Writer()->Reg2(Js::OpCode::Ld_A, funcInfo->yieldRegister, funcInfo->undefinedConstantRegister);
+    }
+    else
     {
         byteCodeGenerator->Writer()->Reg1(Js::OpCode::NewScObjectSimple, funcInfo->yieldRegister);
 
@@ -10268,36 +10271,11 @@ void EmitYield(Js::RegSlot inputLocation, Js::RegSlot resultLocation, ByteCodeGe
         cacheId = funcInfo->FindOrAddInlineCacheId(funcInfo->yieldRegister, Js::PropertyIds::done, false, true);
         byteCodeGenerator->Writer()->PatchableProperty(Js::OpCode::StFld, funcInfo->falseConstantRegister, funcInfo->yieldRegister, cacheId);
     }
-    else
-    {
-        if (yieldStarIterator != Js::Constants::NoRegister)
-        {
-            if (isAsync)
-            {
-                byteCodeGenerator->Writer()->Reg2(Js::OpCode::AsyncYieldStar, funcInfo->yieldRegister, inputLocation);
-            }
-            byteCodeGenerator->Writer()->Reg2(Js::OpCode::Ld_A, funcInfo->yieldRegister, inputLocation );
-        }
-        else
-        {
-            byteCodeGenerator->Writer()->Reg2(isAwait ? Js::OpCode::Await : Js::OpCode::AsyncYield, funcInfo->yieldRegister, inputLocation);
-            byteCodeGenerator->Writer()->Reg2(Js::OpCode::Ld_A, funcInfo->yieldRegister, funcInfo->undefinedConstantRegister );
-        }
-    }
 
     byteCodeGenerator->EmitLeaveOpCodesBeforeYield();
-
     byteCodeGenerator->Writer()->Reg2(Js::OpCode::Yield, funcInfo->yieldRegister, funcInfo->yieldRegister);
     byteCodeGenerator->EmitTryBlockHeadersAfterYield();
-
-    if (yieldStarIterator == Js::Constants::NoRegister)
-    {
-        byteCodeGenerator->Writer()->Reg2(Js::OpCode::ResumeYield, resultLocation, funcInfo->yieldRegister);
-    }
-    else
-    {
-        byteCodeGenerator->Writer()->Reg3(Js::OpCode::ResumeYieldStar, resultLocation, funcInfo->yieldRegister, yieldStarIterator);
-    }
+    byteCodeGenerator->Writer()->Reg2(Js::OpCode::ResumeYield, resultLocation, funcInfo->yieldRegister);
 }
 
 void EmitYieldStar(ParseNodeUni* yieldStarNode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo)
@@ -10320,6 +10298,7 @@ void EmitYieldStar(ParseNodeUni* yieldStarNode, ByteCodeGenerator* byteCodeGener
     EmitIteratorNext(yieldStarNode->location, iteratorLocation, funcInfo->undefinedConstantRegister, byteCodeGenerator, funcInfo);
 
     uint loopId = byteCodeGenerator->Writer()->EnterLoop(loopEntrance);
+
     // since a yield* doesn't have a user defined body, we cannot return from this loop
     // which means we don't need to support EmitJumpCleanup() and there do not need to
     // remember the loopId like the loop statements do.
@@ -10342,7 +10321,16 @@ void EmitYieldStar(ParseNodeUni* yieldStarNode, ByteCodeGenerator* byteCodeGener
     byteCodeGenerator->Writer()->BrReg1(Js::OpCode::BrTrue_A, continuePastLoop, doneLocation);
     funcInfo->ReleaseTmpRegister(doneLocation);
 
-    EmitYield(yieldStarNode->location, yieldStarNode->location, byteCodeGenerator, funcInfo, funcInfo->IsAsyncGenerator(), false, iteratorLocation);
+    if (funcInfo->IsAsyncGenerator())
+    {
+        byteCodeGenerator->Writer()->Reg2(Js::OpCode::AsyncYieldStar, funcInfo->yieldRegister, yieldStarNode->location);
+    }
+
+    byteCodeGenerator->Writer()->Reg2(Js::OpCode::Ld_A, funcInfo->yieldRegister, yieldStarNode->location);
+    byteCodeGenerator->EmitLeaveOpCodesBeforeYield();
+    byteCodeGenerator->Writer()->Reg2(Js::OpCode::Yield, funcInfo->yieldRegister, funcInfo->yieldRegister);
+    byteCodeGenerator->EmitTryBlockHeadersAfterYield();
+    byteCodeGenerator->Writer()->Reg3(Js::OpCode::ResumeYieldStar, yieldStarNode->location, funcInfo->yieldRegister, iteratorLocation);
 
     funcInfo->ReleaseTmpRegister(iteratorLocation);
 
@@ -10361,7 +10349,9 @@ void EmitYieldStar(ParseNodeUni* yieldStarNode, ByteCodeGenerator* byteCodeGener
 
         byteCodeGenerator->Writer()->MarkLabel(notReturn);
     }
+
     funcInfo->ReleaseTmpRegister(isReturn);
+
     // Put the iterator result's value in yieldStarNode->location.
     // It will be used as the result value of the yield* operator expression.
     EmitIteratorValue(yieldStarNode->location, yieldStarNode->location, byteCodeGenerator, funcInfo);
