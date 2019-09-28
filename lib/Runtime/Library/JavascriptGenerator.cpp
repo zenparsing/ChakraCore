@@ -84,7 +84,7 @@ namespace Js
     }
 #endif
 
-    Var JavascriptGenerator::CallGenerator(ResumeYieldData* yieldData, const char16* apiNameForErrorMessage)
+    Var JavascriptGenerator::CallGenerator(ResumeYieldData* yieldData, const char16* apiName)
     {
         ScriptContext* scriptContext = this->GetScriptContext();
         JavascriptLibrary* library = scriptContext->GetLibrary();
@@ -92,41 +92,70 @@ namespace Js
 
         if (this->IsExecuting())
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_GeneratorAlreadyExecuting, apiNameForErrorMessage);
+            JavascriptError::ThrowTypeError(
+                scriptContext,
+                JSERR_GeneratorAlreadyExecuting,
+                apiName);
         }
 
         {
-            // RAII helper to set the state of the generator to completed if an exception is thrown
-            // or if the save state InterpreterStackFrame is never created implying the generator
-            // is JITed and returned without ever yielding.
-            class GeneratorStateHelper
+            // RAII helper to set the state of the generator to completed if an exception is 
+            // thrown or if the save state InterpreterStackFrame is never created implying 
+            // the generator is JITed and returned without ever yielding
+            struct GeneratorStateHelper
             {
-                JavascriptGenerator* g;
+                JavascriptGenerator* generator;
                 bool didThrow;
-            public:
-                GeneratorStateHelper(JavascriptGenerator* g) : g(g), didThrow(true) { g->SetState(GeneratorState::Executing); }
+
+                GeneratorStateHelper(JavascriptGenerator* generator) :
+                    generator(generator),
+                    didThrow(true)
+                {
+                    generator->SetState(GeneratorState::Executing);
+                }
+
+                bool IsDone()
+                {
+                    // If the generator is jit'd, we set its interpreter frame to nullptr at the
+                    // end right before the epilogue to signal that the generator has completed
+                    auto* frame = generator->frame;
+
+                    if (didThrow || frame == nullptr)
+                        return true;
+
+                    int nextOffset = frame->GetReader()->GetCurrentOffset();
+                    int endOffset = frame->GetFunctionBody()->GetByteCode()->GetLength();
+
+                    if (nextOffset == endOffset - 1)
+                        return true;
+
+                    return false;
+                }
+
                 ~GeneratorStateHelper()
                 {
-                    // If the generator is jit'd, we set its interpreter frame to nullptr at the end right before the epilogue
-                    // to signal that the generator has completed
-                    g->SetState(didThrow || g->frame == nullptr ? GeneratorState::Completed : GeneratorState::Suspended);
+                    generator->SetState(IsDone()
+                        ? GeneratorState::Completed
+                        : GeneratorState::Suspended);
                 }
-                void DidNotThrow() { didThrow = false; }
-            } helper(this);
+            };
 
+            GeneratorStateHelper helper { this };
             Var thunkArgs[] = { this, yieldData };
             Arguments arguments(_countof(thunkArgs), thunkArgs);
-
-            JavascriptExceptionObject *exception = nullptr;
+            JavascriptExceptionObject* exception = nullptr;
 
             try
             {
                 BEGIN_SAFE_REENTRANT_CALL(scriptContext->GetThreadContext())
                 {
-                    result = JavascriptFunction::CallFunction<1>(this->scriptFunction, this->scriptFunction->GetEntryPoint(), arguments);
+                    result = JavascriptFunction::CallFunction<1>(
+                        this->scriptFunction,
+                        this->scriptFunction->GetEntryPoint(),
+                        arguments);
                 }
                 END_SAFE_REENTRANT_CALL
-                helper.DidNotThrow();
+                helper.didThrow = false;
             }
             catch (const JavascriptException& err)
             {
@@ -136,27 +165,14 @@ namespace Js
             if (exception != nullptr)
             {
                 if (!exception->IsGeneratorReturnException())
-                {
                     JavascriptExceptionOperators::DoThrowCheckClone(exception, scriptContext);
-                }
+
                 result = exception->GetThrownObject(nullptr);
             }
         }
 
-        if (!this->IsCompleted())
-        {
-            int nextOffset = this->frame->GetReader()->GetCurrentOffset();
-            int endOffset = this->frame->GetFunctionBody()->GetByteCode()->GetLength();
-
-            if (nextOffset != endOffset - 1)
-            {
-                // Yielded values are already wrapped in an IteratorResult object, so we don't need to wrap them.
-                return result;
-            }
-        }
-
-        result = library->CreateIteratorResultObject(result, library->GetTrue());
-        this->SetState(GeneratorState::Completed);
+        if (IsCompleted())
+            return library->CreateIteratorResultObject(result, library->GetTrue());
 
         return result;
     }
