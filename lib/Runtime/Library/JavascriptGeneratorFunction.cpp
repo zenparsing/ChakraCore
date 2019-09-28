@@ -9,9 +9,6 @@ using namespace Js;
     FunctionInfo JavascriptGeneratorFunction::functionInfo(
         FORCE_NO_WRITE_BARRIER_TAG(JavascriptGeneratorFunction::EntryGeneratorFunctionImplementation),
         (FunctionInfo::Attributes)(FunctionInfo::DoNotProfile | FunctionInfo::ErrorOnNew));
-    FunctionInfo JavascriptAsyncGeneratorFunction::functionInfo(
-        FORCE_NO_WRITE_BARRIER_TAG(JavascriptGeneratorFunction::EntryAsyncGeneratorFunctionImplementation),
-        (FunctionInfo::Attributes)(FunctionInfo::DoNotProfile | FunctionInfo::ErrorOnNew));
 
     JavascriptGeneratorFunction::JavascriptGeneratorFunction(DynamicType* type)
         : ScriptFunctionBase(type, &functionInfo),
@@ -35,20 +32,9 @@ using namespace Js;
         DebugOnly(VerifyEntryPoint());
     }
 
-    JavascriptAsyncGeneratorFunction::JavascriptAsyncGeneratorFunction(DynamicType* type, GeneratorVirtualScriptFunction* scriptFunction)
-        : JavascriptGeneratorFunction(type, &functionInfo, scriptFunction)
-    {
-        DebugOnly(VerifyEntryPoint());
-    }
-
     JavascriptGeneratorFunction* JavascriptGeneratorFunction::New(ScriptContext* scriptContext, GeneratorVirtualScriptFunction* scriptFunction)
     {
         return scriptContext->GetLibrary()->CreateGeneratorFunction(functionInfo.GetOriginalEntryPoint(), scriptFunction);
-    }
-
-    JavascriptAsyncGeneratorFunction* JavascriptAsyncGeneratorFunction::New(ScriptContext* scriptContext, GeneratorVirtualScriptFunction* scriptFunction)
-    {
-        return scriptContext->GetLibrary()->CreateAsyncGeneratorFunction(functionInfo.GetOriginalEntryPoint(), scriptFunction);
     }
 
     bool JavascriptGeneratorFunction::IsBaseGeneratorFunction(RecyclableObject* obj)
@@ -65,17 +51,6 @@ using namespace Js;
     template <> bool Js::VarIsImpl<JavascriptGeneratorFunction>(RecyclableObject* obj)
     {
         return JavascriptGeneratorFunction::IsBaseGeneratorFunction(obj) || VarIs<JavascriptAsyncFunction>(obj) || VarIs<JavascriptAsyncGeneratorFunction>(obj);
-    }
-
-    template <> bool Js::VarIsImpl<JavascriptAsyncGeneratorFunction>(RecyclableObject* obj)
-    {
-        if (VarIs<JavascriptFunction>(obj))
-        {
-            return VirtualTableInfo<JavascriptAsyncGeneratorFunction>::HasVirtualTable(obj)
-                || VirtualTableInfo<CrossSiteObject<JavascriptAsyncGeneratorFunction>>::HasVirtualTable(obj);
-        }
-
-        return false;
     }
 
     JavascriptGeneratorFunction* JavascriptGeneratorFunction::OP_NewScGenFunc(FrameDisplay *environment, FunctionInfoPtrPtr infoRef)
@@ -153,31 +128,6 @@ using namespace Js;
         }
         END_SAFE_REENTRANT_CALL
 
-        return generator;
-    }
-
-    Var JavascriptGeneratorFunction::EntryAsyncGeneratorFunctionImplementation(RecyclableObject* function, CallInfo callInfo, ...)
-    {
-        PROBE_STACK(function->GetScriptContext(), Js::Constants::MinStackDefault);
-        ARGUMENTS(stackArgs, callInfo);
-
-        Assert(!(callInfo.Flags & CallFlags_New));
-
-        ScriptContext* scriptContext = function->GetScriptContext();
-        JavascriptAsyncGeneratorFunction* asyncGeneratorFunction = VarTo<JavascriptAsyncGeneratorFunction>(function);
-
-        // InterpreterStackFrame takes a pointer to the args, so copy them to the recycler heap
-        // and use that buffer for this InterpreterStackFrame.
-        Field(Var)* argsHeapCopy = RecyclerNewArray(scriptContext->GetRecycler(), Field(Var), stackArgs.Info.Count);
-        CopyArray(argsHeapCopy, stackArgs.Info.Count, stackArgs.Values, stackArgs.Info.Count);
-        Arguments heapArgs(callInfo, unsafe_write_barrier_cast<Var*>(argsHeapCopy));
-
-        DynamicObject* prototype = scriptContext->GetLibrary()->CreateAsyncGeneratorConstructorPrototypeObject();
-        JavascriptGenerator* generator = scriptContext->GetLibrary()->CreateGenerator(heapArgs, asyncGeneratorFunction->scriptFunction, prototype);
-        generator->SetIsAsync();
-        generator->InitialiseAsyncGenerator(scriptContext);
-        // Set the prototype from constructor
-        JavascriptOperators::OrdinaryCreateFromConstructor(function, generator, prototype, scriptContext);
         return generator;
     }
 
