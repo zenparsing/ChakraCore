@@ -12,6 +12,7 @@
 #include "Library/JavascriptRegularExpression.h"
 #include "Library/ThrowErrorObject.h"
 #include "Library/JavascriptGeneratorFunction.h"
+#include "Library/JavascriptAsyncFunction.h"
 
 #include "Library/ForInObjectEnumerator.h"
 #include "Library/ES5Array.h"

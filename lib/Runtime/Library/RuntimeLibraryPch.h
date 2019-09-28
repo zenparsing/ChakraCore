@@ -31,6 +31,7 @@
 
 #include "Library/BoundFunction.h"
 #include "Library/JavascriptGeneratorFunction.h"
+#include "Library/JavascriptAsyncFunction.h"
 
 #include "Library/RegexHelper.h"
 #include "Library/JavascriptRegularExpression.h"

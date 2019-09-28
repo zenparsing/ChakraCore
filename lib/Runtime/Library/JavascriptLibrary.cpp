@@ -6098,21 +6098,21 @@ namespace Js
         return RecyclerNew(this->GetRecycler(), JavascriptPromise, promiseType);
     }
 
-    JavascriptPromiseAsyncSpawnExecutorFunction* JavascriptLibrary::CreatePromiseAsyncSpawnExecutorFunction(JavascriptGenerator* generator, Var target)
+    JavascriptAsyncSpawnExecutorFunction* JavascriptLibrary::CreateAsyncSpawnExecutorFunction(JavascriptGenerator* generator, Var target)
     {
-        JavascriptMethod entryPoint = JavascriptPromise::EntryJavascriptPromiseAsyncSpawnExecutorFunction;
+        JavascriptMethod entryPoint = JavascriptAsyncFunction::EntryAsyncSpawnExecutorFunction;
         FunctionInfo* functionInfo = RecyclerNew(this->GetRecycler(), FunctionInfo, entryPoint);
         DynamicType* type = CreateDeferredPrototypeFunctionType(this->inDispatchProfileMode ? ProfileEntryThunk : entryPoint);
-        JavascriptPromiseAsyncSpawnExecutorFunction* function = RecyclerNewEnumClass(this->GetRecycler(), EnumFunctionClass, JavascriptPromiseAsyncSpawnExecutorFunction, type, functionInfo, generator, target);
+        JavascriptAsyncSpawnExecutorFunction* function = RecyclerNewEnumClass(this->GetRecycler(), EnumFunctionClass, JavascriptAsyncSpawnExecutorFunction, type, functionInfo, generator, target);
 
         return function;
     }
 
-    JavascriptPromiseAsyncSpawnStepArgumentExecutorFunction* JavascriptLibrary::CreatePromiseAsyncSpawnStepArgumentExecutorFunction(JavascriptMethod entryPoint, JavascriptGenerator* generator, Var argument, Var resolve, Var reject, bool isReject)
+    JavascriptAsyncSpawnStepFunction* JavascriptLibrary::CreateAsyncSpawnStepFunction(JavascriptMethod entryPoint, JavascriptGenerator* generator, Var argument, Var resolve, Var reject, bool isReject)
     {
         FunctionInfo* functionInfo = RecyclerNew(this->GetRecycler(), FunctionInfo, entryPoint);
         DynamicType* type = CreateDeferredPrototypeFunctionType(this->inDispatchProfileMode ? ProfileEntryThunk : entryPoint);
-        JavascriptPromiseAsyncSpawnStepArgumentExecutorFunction* function = RecyclerNewEnumClass(this->GetRecycler(), EnumFunctionClass, JavascriptPromiseAsyncSpawnStepArgumentExecutorFunction, type, functionInfo, generator, argument, resolve, reject, isReject);
+        JavascriptAsyncSpawnStepFunction* function = RecyclerNewEnumClass(this->GetRecycler(), EnumFunctionClass, JavascriptAsyncSpawnStepFunction, type, functionInfo, generator, argument, resolve, reject, isReject);
 
         return function;
     }

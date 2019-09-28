@@ -1022,11 +1022,11 @@ namespace Js
         AsyncGeneratorNextProcessor* CreateAsyncGeneratorAwaitYieldFunction(JavascriptGenerator* generator, bool isYieldStar);
         JavascriptAsyncFunction* CreateAsyncFunction(JavascriptMethod entryPoint, GeneratorVirtualScriptFunction* scriptFunction);
         JavascriptAsyncFunction* CreateAsyncFunction(JavascriptMethod entryPoint, bool isAnonymousFunction);
+        JavascriptAsyncSpawnExecutorFunction* CreateAsyncSpawnExecutorFunction(JavascriptGenerator* generator, Var target);
+        JavascriptAsyncSpawnStepFunction* CreateAsyncSpawnStepFunction(JavascriptMethod entryPoint, JavascriptGenerator* generator, Var argument, Var resolve = nullptr, Var reject = nullptr, bool isReject = false);
         JavascriptExternalFunction* CreateExternalFunction(ExternalMethod entryPointer, PropertyId nameId, Var signature, UINT64 flags, bool isLengthAvailable = false);
         JavascriptExternalFunction* CreateExternalFunction(ExternalMethod entryPointer, Var nameId, Var signature, UINT64 flags, bool isLengthAvailable = false);
         JavascriptExternalFunction* CreateStdCallExternalFunction(StdCallJavascriptMethod entryPointer, Var name, void *callbackState);
-        JavascriptPromiseAsyncSpawnExecutorFunction* CreatePromiseAsyncSpawnExecutorFunction(JavascriptGenerator* generator, Var target);
-        JavascriptPromiseAsyncSpawnStepArgumentExecutorFunction* CreatePromiseAsyncSpawnStepArgumentExecutorFunction(JavascriptMethod entryPoint, JavascriptGenerator* generator, Var argument, Var resolve = nullptr, Var reject = nullptr, bool isReject = false);
         JavascriptPromiseCapabilitiesExecutorFunction* CreatePromiseCapabilitiesExecutorFunction(JavascriptMethod entryPoint, JavascriptPromiseCapability* capability);
         JavascriptPromiseResolveOrRejectFunction* CreatePromiseResolveOrRejectFunction(JavascriptMethod entryPoint, JavascriptPromise* promise, bool isReject, JavascriptPromiseResolveOrRejectFunctionAlreadyResolvedWrapper* alreadyResolvedRecord);
         JavascriptPromiseReactionTaskFunction* CreatePromiseReactionTaskFunction(JavascriptMethod entryPoint, JavascriptPromiseReaction* reaction, Var argument);

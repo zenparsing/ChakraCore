@@ -1175,22 +1175,22 @@ namespace TTD
 #endif
 
         //////////
-        struct SnapJavascriptPromiseAsyncSpawnExecutorFunctionInfo
+        struct SnapJavascriptAsyncSpawnExecutorFunctionInfo
         {
             TTD_PTR_ID generator;
             TTDVar target;
         };
 
-        Js::RecyclableObject *DoObjectInflation_SnapJavascriptPromiseAsyncSpawnExecutorFunction(const SnapObject *snpObject, InflateMap *inflator);
-        void DoAddtlValueInstantiation_SnapJavascriptPromiseAsyncSpawnExecutorFunction(const SnapObject* snpObject, Js::RecyclableObject* obj, InflateMap* inflator);
-        void EmitAddtlInfo_SnapJavascriptPromiseAsyncSpawnExecutorFunction(const SnapObject* snpObject, FileWriter* writer);
-        void ParseAddtlInfo_SnapJavascriptPromiseAsyncSpawnExecutorFunction(SnapObject* snpObject, FileReader* reader, SlabAllocator& alloc);
+        Js::RecyclableObject *DoObjectInflation_SnapJavascriptAsyncSpawnExecutorFunction(const SnapObject *snpObject, InflateMap *inflator);
+        void DoAddtlValueInstantiation_SnapJavascriptAsyncSpawnExecutorFunction(const SnapObject* snpObject, Js::RecyclableObject* obj, InflateMap* inflator);
+        void EmitAddtlInfo_SnapJavascriptAsyncSpawnExecutorFunction(const SnapObject* snpObject, FileWriter* writer);
+        void ParseAddtlInfo_SnapJavascriptAsyncSpawnExecutorFunction(SnapObject* snpObject, FileReader* reader, SlabAllocator& alloc);
 #if ENABLE_SNAPSHOT_COMPARE
-        void AssertSnapEquiv_SnapJavascriptPromiseAsyncSpawnExecutorFunction(const SnapObject* sobj1, const SnapObject* sobj2, TTDCompareMap& compareMap);
+        void AssertSnapEquiv_SnapJavascriptAsyncSpawnExecutorFunction(const SnapObject* sobj1, const SnapObject* sobj2, TTDCompareMap& compareMap);
 #endif
        //////////
 
-        struct SnapJavascriptPromiseAsyncSpawnStepArgumentExecutorFunctionInfo
+        struct SnapJavascriptAsyncSpawnStepFunctionInfo
         {
             TTD_PTR_ID generator;
             TTDVar reject;
@@ -1200,16 +1200,15 @@ namespace TTD
             uint32 entryPoint;
         };
 
-        Js::RecyclableObject *DoObjectInflation_SnapJavascriptPromiseAsyncSpawnStepArgumentExecutorFunctionInfo(const SnapObject *snpObject, InflateMap *inflator);
-        void DoAddtlValueInstantiation_SnapJavascriptPromiseAsyncSpawnStepArgumentExecutorFunctionInfo(const SnapObject* snpObject, Js::RecyclableObject* obj, InflateMap* inflator);
-        void EmitAddtlInfo_SnapJavascriptPromiseAsyncSpawnStepArgumentExecutorFunctionInfo(const SnapObject* snpObject, FileWriter* writer);
-        void ParseAddtlInfo_SnapJavascriptPromiseAsyncSpawnStepArgumentExecutorFunctionInfo(SnapObject* snpObject, FileReader* reader, SlabAllocator& alloc);
+        Js::RecyclableObject *DoObjectInflation_SnapJavascriptAsyncSpawnStepFunctionInfo(const SnapObject *snpObject, InflateMap *inflator);
+        void DoAddtlValueInstantiation_SnapJavascriptAsyncSpawnStepFunctionInfo(const SnapObject* snpObject, Js::RecyclableObject* obj, InflateMap* inflator);
+        void EmitAddtlInfo_SnapJavascriptAsyncSpawnStepFunctionInfo(const SnapObject* snpObject, FileWriter* writer);
+        void ParseAddtlInfo_SnapJavascriptAsyncSpawnStepFunctionInfo(SnapObject* snpObject, FileReader* reader, SlabAllocator& alloc);
 #if ENABLE_SNAPSHOT_COMPARE
-        void AssertSnapEquiv_SnapJavascriptPromiseAsyncSpawnStepArgumentExecutorFunctionInfo(const SnapObject* sobj1, const SnapObject* sobj2, TTDCompareMap& compareMap);
+        void AssertSnapEquiv_SnapJavascriptAsyncSpawnStepFunctionInfo(const SnapObject* sobj1, const SnapObject* sobj2, TTDCompareMap& compareMap);
 #endif
         //////////
     }
 }
 
 #endif
-
