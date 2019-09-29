@@ -42,30 +42,16 @@ Var JavascriptAsyncFunction::EntryAsyncFunctionImplementation(
 {
     auto* scriptContext = function->GetScriptContext();
     PROBE_STACK(scriptContext, Js::Constants::MinStackDefault);
-    ARGUMENTS(stackArgs, callInfo);
+    ARGUMENTS(args, callInfo);
 
     auto* library = scriptContext->GetLibrary();
-    auto* prototype = scriptContext->GetLibrary()->GetNull();
-
-    // InterpreterStackFrame takes a pointer to the args, so copy them to the recycler
-    // heap and use that buffer for this InterpreterStackFrame
-    Field(Var)* argsHeapCopy = RecyclerNewArray(
-        scriptContext->GetRecycler(),
-        Field(Var), 
-        stackArgs.Info.Count);
-
-    CopyArray(argsHeapCopy, stackArgs.Info.Count, stackArgs.Values, stackArgs.Info.Count);
-    Arguments heapArgs(callInfo, unsafe_write_barrier_cast<Var*>(argsHeapCopy));
-
-    auto* generator = scriptContext->GetLibrary()->CreateGenerator(
-        heapArgs,
-        VarTo<JavascriptAsyncFunction>(function)->GetGeneratorVirtualScriptFunction(),
-        prototype);
-
-    auto* executor = library->CreateAsyncSpawnExecutorFunction(generator, stackArgs[0]);
-    JavascriptExceptionObject* exception = nullptr;
+    auto* asyncFn = VarTo<JavascriptAsyncFunction>(function);
+    auto* scriptFn = asyncFn->GetGeneratorVirtualScriptFunction();
+    auto* generator = library->CreateGenerator(args, scriptFn, library->GetNull());
+    auto* executor = library->CreateAsyncSpawnExecutorFunction(generator, args[0]);
     auto* promise = library->CreatePromise();
 
+    JavascriptExceptionObject* exception = nullptr;
     JavascriptPromiseResolveOrRejectFunction* resolve;
     JavascriptPromiseResolveOrRejectFunction* reject;
     JavascriptPromise::InitializePromise(promise, &resolve, &reject, scriptContext);

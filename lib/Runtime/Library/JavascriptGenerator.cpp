@@ -7,18 +7,42 @@
 
 namespace Js
 {
-    JavascriptGenerator::JavascriptGenerator(DynamicType* type, Arguments &args, ScriptFunction* scriptFunction)
-        : DynamicObject(type), frame(nullptr), state(GeneratorState::Suspended), args(args), scriptFunction(scriptFunction)
-    {
-    }
+    JavascriptGenerator::JavascriptGenerator(
+        DynamicType* type,
+        Arguments& args,
+        ScriptFunction* scriptFunction) :
+            DynamicObject(type),
+            args(args),
+            frame(nullptr),
+            state(GeneratorState::Suspended),
+            scriptFunction(scriptFunction) {}
 
-    JavascriptGenerator* JavascriptGenerator::New(Recycler* recycler, DynamicType* generatorType, Arguments& args, ScriptFunction* scriptFunction)
+    JavascriptGenerator* JavascriptGenerator::New(
+        Recycler* recycler,
+        DynamicType* generatorType,
+        Arguments& args,
+        ScriptFunction* scriptFunction)
     {
+        // InterpreterStackFrame takes a pointer to the args, so copy them to the recycler
+        // heap and use that buffer for the generator's InterpreterStackFrame
+        Field(Var)* argsHeapCopy = RecyclerNewArray(
+            recycler,
+            Field(Var),
+            args.Info.Count);
+
+        CopyArray(argsHeapCopy, args.Info.Count, args.Values, args.Info.Count);
+        Arguments heapArgs(args.Info, unsafe_write_barrier_cast<Var*>(argsHeapCopy));
+
 #if GLOBAL_ENABLE_WRITE_BARRIER
         if (CONFIG_FLAG(ForceSoftwareWriteBarrier))
         {
             JavascriptGenerator* obj = RecyclerNewFinalized(
-                recycler, JavascriptGenerator, generatorType, args, scriptFunction);
+                recycler,
+                JavascriptGenerator,
+                generatorType,
+                heapArgs,
+                scriptFunction);
+
             if (obj->args.Values != nullptr)
             {
                 recycler->RegisterPendingWriteBarrierBlock(obj->args.Values, obj->args.Info.Count * sizeof(Var));
@@ -26,18 +50,19 @@ namespace Js
             }
             return obj;
         }
-        else
 #endif
-        {
-            return RecyclerNew(recycler, JavascriptGenerator, generatorType, args, scriptFunction);
-        }
+
+        return RecyclerNew(recycler, JavascriptGenerator, generatorType, heapArgs, scriptFunction);
     }
 
-    JavascriptGenerator *JavascriptGenerator::New(Recycler *recycler, DynamicType *generatorType, Arguments &args,
-        Js::JavascriptGenerator::GeneratorState generatorState)
+    JavascriptGenerator *JavascriptGenerator::New(
+        Recycler* recycler,
+        DynamicType* generatorType,
+        Arguments& args,
+        JavascriptGenerator::GeneratorState state)
     {
-        JavascriptGenerator *obj = JavascriptGenerator::New(recycler, generatorType, args, nullptr);
-        obj->SetState(generatorState);
+        auto* obj = JavascriptGenerator::New(recycler, generatorType, args, nullptr);
+        obj->SetState(state);
         return obj;
     }
 

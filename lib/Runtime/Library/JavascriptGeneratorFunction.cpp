@@ -103,21 +103,16 @@ using namespace Js;
     Var JavascriptGeneratorFunction::EntryGeneratorFunctionImplementation(RecyclableObject* function, CallInfo callInfo, ...)
     {
         PROBE_STACK(function->GetScriptContext(), Js::Constants::MinStackDefault);
-        ARGUMENTS(stackArgs, callInfo);
+        ARGUMENTS(args, callInfo);
 
         Assert(!(callInfo.Flags & CallFlags_New));
 
         ScriptContext* scriptContext = function->GetScriptContext();
         JavascriptGeneratorFunction* generatorFunction = VarTo<JavascriptGeneratorFunction>(function);
 
-        // InterpreterStackFrame takes a pointer to the args, so copy them to the recycler heap
-        // and use that buffer for this InterpreterStackFrame.
-        Field(Var)* argsHeapCopy = RecyclerNewArray(scriptContext->GetRecycler(), Field(Var), stackArgs.Info.Count);
-        CopyArray(argsHeapCopy, stackArgs.Info.Count, stackArgs.Values, stackArgs.Info.Count);
-        Arguments heapArgs(callInfo, unsafe_write_barrier_cast<Var*>(argsHeapCopy));
-
         DynamicObject* prototype = scriptContext->GetLibrary()->CreateGeneratorConstructorPrototypeObject();
-        JavascriptGenerator* generator = scriptContext->GetLibrary()->CreateGenerator(heapArgs, generatorFunction->scriptFunction, prototype);
+        JavascriptGenerator* generator = scriptContext->GetLibrary()->CreateGenerator(args, generatorFunction->scriptFunction, prototype);
+
         // Set the prototype from constructor
         JavascriptOperators::OrdinaryCreateFromConstructor(function, generator, prototype, scriptContext);
 

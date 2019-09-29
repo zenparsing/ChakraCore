@@ -43,26 +43,15 @@ Var JavascriptAsyncGeneratorFunction::EntryAsyncGeneratorFunctionImplementation(
 {
     auto* scriptContext = function->GetScriptContext();
     PROBE_STACK(scriptContext, Js::Constants::MinStackDefault);
-    ARGUMENTS(stackArgs, callInfo);
+    ARGUMENTS(args, callInfo);
 
     Assert(!(callInfo.Flags & CallFlags_New));
 
     auto* asyncGeneratorFn = VarTo<JavascriptAsyncGeneratorFunction>(function);
-
-    // InterpreterStackFrame takes a pointer to the args, so copy them to the recycler heap
-    // and use that buffer for this InterpreterStackFrame.
-    Field(Var)* argsHeapCopy = RecyclerNewArray(
-        scriptContext->GetRecycler(),
-        Field(Var),
-        stackArgs.Info.Count);
-
-    CopyArray(argsHeapCopy, stackArgs.Info.Count, stackArgs.Values, stackArgs.Info.Count);
-    Arguments heapArgs(callInfo, unsafe_write_barrier_cast<Var*>(argsHeapCopy));
-
     auto* library = scriptContext->GetLibrary();
     auto* prototype = library->CreateAsyncGeneratorConstructorPrototypeObject();
     auto* scriptFn = asyncGeneratorFn->GetGeneratorVirtualScriptFunction();
-    auto* generator = library->CreateGenerator(heapArgs, scriptFn, prototype);
+    auto* generator = library->CreateGenerator(args, scriptFn, prototype);
 
     generator->SetIsAsync();
     generator->InitialiseAsyncGenerator(scriptContext);
