@@ -10504,10 +10504,13 @@ void EmitYieldStar(
     if (isAsync)
     {
         EmitAwait(yieldStarReg, yieldStarReg, byteCodeGenerator, funcInfo);
+        // TODO(zenparsing): This should be taken care of by EmitIteratorComplete
+        /*
         Js::ByteCodeLabel skipThrow = writer->DefineLabel();
         writer->BrReg1(Js::OpCode::BrOnObject_A, skipThrow, iteratorLocation);
         writer->W1(Js::OpCode::RuntimeTypeError, SCODE_CODE(JSERR_NeedObject));
         writer->MarkLabel(skipThrow);
+        */
     }
 
     // Get the iterator result's done property

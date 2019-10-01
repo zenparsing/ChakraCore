@@ -56,6 +56,7 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)JavascriptArrayIterator.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)JavascriptAsyncFromSyncIterator.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)JavascriptAsyncFunction.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)JavascriptAsyncGenerator.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)JavascriptAsyncGeneratorFunction.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)JavascriptBuiltInFunctions.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)JavascriptExternalFunction.cpp" />
@@ -202,6 +203,7 @@
     <ClInclude Include="JavascriptArrayIndexSnapshotEnumerator.h" />
     <ClInclude Include="JavascriptAsyncFromSyncIterator.h" />
     <ClInclude Include="JavascriptAsyncFunction.h" />
+    <ClInclude Include="JavascriptAsyncGenerator.h" />
     <ClInclude Include="JavascriptAsyncGeneratorFunction.h" />
     <ClInclude Include="JavascriptBuiltInFunctionList.h" />
     <ClInclude Include="JavascriptBuiltInFunctions.h" />

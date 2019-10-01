@@ -32,7 +32,7 @@
 #include "Library/BoundFunction.h"
 #include "Library/JavascriptGeneratorFunction.h"
 #include "Library/JavascriptAsyncFunction.h"
-#include "Library/JavascriptGeneratorFunction.h"
+#include "Library/JavascriptAsyncGeneratorFunction.h"
 
 #include "Library/RegexHelper.h"
 #include "Library/JavascriptRegularExpression.h"
@@ -49,6 +49,7 @@
 #include "Library/JavascriptProxy.h"
 #include "Library/JavascriptReflect.h"
 #include "Library/JavascriptGenerator.h"
+#include "Library/JavascriptAsyncGenerator.h"
 
 #include "Library/SameValueComparer.h"
 #include "Library/MapOrSetDataList.h"

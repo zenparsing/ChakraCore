@@ -1105,7 +1105,7 @@ namespace Js
             BEGIN_SAFE_REENTRANT_CALL(scriptContext->GetThreadContext())
             {
                 ResumeYieldData yieldData(scriptContext->GetLibrary()->GetUndefined(), nullptr);
-                ret = gen->CallGenerator(&yieldData, _u("Module Global"));
+                ret = gen->CallGenerator(&yieldData);
                 ret = JavascriptOperators::GetProperty(VarTo<RecyclableObject>(ret), PropertyIds::value, scriptContext);
             }
             END_SAFE_REENTRANT_CALL

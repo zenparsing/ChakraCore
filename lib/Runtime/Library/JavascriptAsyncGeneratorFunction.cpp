@@ -51,10 +51,7 @@ Var JavascriptAsyncGeneratorFunction::EntryAsyncGeneratorFunctionImplementation(
     auto* library = scriptContext->GetLibrary();
     auto* prototype = library->CreateAsyncGeneratorConstructorPrototypeObject();
     auto* scriptFn = asyncGeneratorFn->GetGeneratorVirtualScriptFunction();
-    auto* generator = library->CreateGenerator(args, scriptFn, prototype);
-
-    generator->SetIsAsync();
-    generator->InitialiseAsyncGenerator(scriptContext);
+    auto* generator = library->CreateAsyncGenerator(args, scriptFn, prototype);
 
     // Set the prototype from constructor
     JavascriptOperators::OrdinaryCreateFromConstructor(
@@ -62,6 +59,18 @@ Var JavascriptAsyncGeneratorFunction::EntryAsyncGeneratorFunctionImplementation(
         generator,
         prototype,
         scriptContext);
+
+    // Call next on the generator to execute until the beginning of the body
+    BEGIN_SAFE_REENTRANT_CALL(scriptContext->GetThreadContext())
+    {
+        CALL_ENTRYPOINT(
+            scriptContext->GetThreadContext(),
+            generator->EntryNext,
+            asyncGeneratorFn,
+            CallInfo(CallFlags_Value, 1),
+            generator);
+    }
+    END_SAFE_REENTRANT_CALL
 
     return generator;
 }
