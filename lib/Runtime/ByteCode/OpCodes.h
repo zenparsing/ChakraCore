@@ -234,8 +234,9 @@ MACRO_BACKEND_ONLY(     EHThrow,            Reg1,           OpSideEffect|OpPostO
 MACRO_WMS(              Throw,              Reg1,           OpSideEffect|OpNoFallThrough|OpPostOpDbgBailOut)    // Throw exception
 MACRO(                  Ret,                Empty,          OpSideEffect|OpUseAllFields|OpNoFallThrough)        // Return from function
 MACRO_WMS(              Yield,              Reg2,           OpSideEffect|OpUseAllFields)                        // Yield from generator function
-MACRO_WMS(              ResumeYield,        Reg2,           OpSideEffect|OpHasImplicitCall)
-MACRO_WMS(              ResumeYieldStar,    Reg3,           OpSideEffect|OpHasImplicitCall)
+// TODO(zenparsing): Are these flags correct?
+MACRO_WMS(              ResumeYield,        Reg2,           OpSideEffect)
+MACRO_WMS(              ResumeYieldStar,    Reg2,           OpSideEffect)
 
 // Unary operations
 MACRO_WMS(              Incr_A,             Reg2,           OpTempNumberProducing|OpOpndHasImplicitCall|OpDoNotTransfer|OpTempNumberSources|OpTempObjectSources|OpCanCSE|OpPostOpDbgBailOut|OpProducesNumber)     // Increment

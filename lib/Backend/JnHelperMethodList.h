@@ -535,6 +535,8 @@ HELPERCALLCHK(LdImportMeta,             Js::JavascriptOperators::OP_LdImportMeta
 HELPERCALLCHK(NewAsyncFromSyncIterator, Js::JavascriptOperators::OP_NewAsyncFromSyncIterator, AttrCanNotBeReentrant)
 
 HELPERCALLCHK(ResumeYield,              Js::JavascriptOperators::OP_ResumeYield, AttrCanThrow)
+// TODO(zenparsing): Are the flags correct?
+HELPERCALLCHK(ResumeYieldStar,          Js::JavascriptOperators::OP_ResumeYieldStar, AttrCanThrow)
 
 HELPERCALL(CreateInterpreterStackFrameForGenerator, Js::InterpreterStackFrame::CreateInterpreterStackFrameForGenerator, AttrCanNotBeReentrant)
 

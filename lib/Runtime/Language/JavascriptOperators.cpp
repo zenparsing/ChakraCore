@@ -10269,147 +10269,54 @@ SetElementIHelper_INDEX_TYPE_IS_NUMBER:
         JIT_HELPER_END(ImportCall);
     }
 
-    Var JavascriptOperators::OP_ResumeYield(ResumeYieldData* yieldData, RecyclableObject* iterator)
+    Var JavascriptOperators::OP_ResumeYield(ResumeYieldData* yieldData)
     {
         JIT_HELPER_REENTRANT_HEADER(ResumeYield);
 
-        PropertyId resumeKind = !yieldData->exceptionObj 
-            ? PropertyIds::next
-            : yieldData->exceptionObj->IsGeneratorReturnException()
-                ? PropertyIds::return_
-                : PropertyIds::throw_;
+        auto* scriptContext = yieldData->scriptContext;
 
-        if (iterator == nullptr)
+        if (yieldData->kind == ResumeYieldKind::Throw)
         {
-            switch (resumeKind)
-            {
-                case PropertyIds::throw_:
-                    // Use ThrowExceptionObject to get debugger support for 
-                    // breaking on throw
-                    JavascriptExceptionOperators::ThrowExceptionObject(
-                        yieldData->exceptionObj,
-                        yieldData->exceptionObj->GetScriptContext(),
-                        true);
-                case PropertyIds::return_:
-                    // Do not use ThrowExceptionObject for return exceptions since
-                    // these exceptions are not real exceptions
-                    JavascriptExceptionOperators::DoThrow(
-                        yieldData->exceptionObj,
-                        yieldData->exceptionObj->GetScriptContext());
-                default:
-                    return yieldData->data;
-            }
-        }
-
-        return iterator->GetScriptContext()->GetLibrary()->GetUndefined();
-
-        /* TODO(zenparsing): We're going to need to move much of this into bytecode
-        auto* scriptContext = iterator->GetScriptContext();
-        Var prop = JavascriptOperators::GetProperty(iterator, resumeKind, scriptContext);
-
-        if (JavascriptOperators::IsUndefinedOrNull(prop))
-        {
-            if (resumeKind == PropertyIds::throw_)
-            {
-                // If the iterator does not have a "throw" method, then
-                // attempt to call "return" on it first
-                Var returnProp = JavascriptOperators::GetProperty(
-                    iterator,
-                    PropertyIds::return_,
-                    scriptContext);
-
-                if (!JavascriptOperators::IsUndefinedOrNull(returnProp))
-                {
-                    if (!JavascriptConversion::IsCallable(returnProp))
-                    {
-                        JavascriptError::ThrowTypeError(
-                            scriptContext,
-                            JSERR_Property_NeedFunction,
-                            _u("return"));
-                    }
-
-                    Var result = nullptr;
-                    auto* returnMethod = VarTo<RecyclableObject>(prop);
-
-                    BEGIN_SAFE_REENTRANT_CALL(scriptContext->GetThreadContext())
-                    {
-                        Var args[] = { iterator, yieldData->data };
-                        CallInfo callInfo(CallFlags_Value, _countof(args));
-                        result = JavascriptFunction::CallFunction<true>(
-                            returnMethod,
-                            returnMethod->GetEntryPoint(),
-                            Arguments(callInfo, args));
-                    }
-                    END_SAFE_REENTRANT_CALL
-
-                    if (!JavascriptOperators::IsObject(result))
-                        JavascriptError::ThrowTypeError(scriptContext, JSERR_NeedObject);
-                }
-            }
-            else if (resumeKind == PropertyIds::return_)
-            {
-                // Do not use ThrowExceptionObject for return exceptions since these
-                // exceptions are not real exceptions
-                JavascriptExceptionOperators::DoThrow(yieldData->exceptionObj, scriptContext);
-            }
-        }
-
-        if (!JavascriptConversion::IsCallable(prop))
-        {
-            const char16* name;
-            switch (resumeKind)
-            {
-                case PropertyIds::throw_: name = _u("throw"); break;
-                case PropertyIds::return_: name = _u("return"); break;
-                default: name = _u("next"); break;
-            }
-            JavascriptError::ThrowTypeError(
+            auto* exception = RecyclerNew(
+                scriptContext->GetRecycler(),
+                JavascriptExceptionObject,
+                yieldData->data,
                 scriptContext,
-                JSERR_Property_NeedFunction,
-                name);
+                nullptr);
+
+            // Use ThrowExceptionObject to get debugger support for
+            // breaking on throw
+            JavascriptExceptionOperators::ThrowExceptionObject(
+                exception,
+                scriptContext,
+                true);
         }
-
-        auto* iteratorMethod = VarTo<RecyclableObject>(prop);
-
-        Var result = scriptContext->GetThreadContext()->ExecuteImplicitCall(
-            iteratorMethod,
-            Js::ImplicitCall_Accessor,
-            [=]()
-            {
-                Var args[] = { iterator, yieldData->data };
-                CallInfo callInfo(CallFlags_Value, _countof(args));
-                return JavascriptFunction::CallFunction<true>(
-                    iteratorMethod,
-                    iteratorMethod->GetEntryPoint(),
-                    Arguments(callInfo, args));
-            });
-
-        if (yieldData->generator == nullptr && !JavascriptOperators::IsObject(result))
+        else if (yieldData->kind == ResumeYieldKind::Return)
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_NeedObject);
-        }
+            auto* returnException = RecyclerNew(
+                scriptContext->GetRecycler(),
+                GeneratorReturnExceptionObject,
+                yieldData->data,
+                scriptContext);
 
-        if (isThrow || isNext || yieldData->generator != nullptr)
-        {
-            // 5.b.ii.2
-            // NOTE: Exceptions from the inner iterator throw method are propagated.
-            // Normal completions from an inner throw method are processed similarly to an inner next.
-            return result;
+            // Do not use ThrowExceptionObject for return exceptions since
+            // these exceptions are not real exceptions
+            JavascriptExceptionOperators::DoThrow(returnException, scriptContext);
         }
-
-        RecyclableObject* obj = VarTo<RecyclableObject>(result);
-        Var done = JavascriptOperators::GetProperty(obj, PropertyIds::done, scriptContext);
-        if (done == iterator->GetLibrary()->GetTrue())
+        else
         {
-            Var value = JavascriptOperators::GetProperty(obj, PropertyIds::value, scriptContext);
-            yieldData->exceptionObj->SetThrownObject(value);
-            // Do not use ThrowExceptionObject for return() API exceptions since these exceptions are not real exceptions
-            JavascriptExceptionOperators::DoThrow(yieldData->exceptionObj, scriptContext);
+            return yieldData->data;
         }
-        return result;
-        */
 
         JIT_HELPER_END(ResumeYield);
+    }
+
+    Var JavascriptOperators::OP_ResumeYieldStar(ResumeYieldData* yieldData)
+    {
+        JIT_HELPER_REENTRANT_HEADER(ResumeYieldStar);
+        // TODO(zenparsing)
+        return yieldData->data;
+        JIT_HELPER_END(ResumeYieldStar);
     }
 
     Var JavascriptOperators::OP_NewAsyncFromSyncIterator(Var syncIterator, ScriptContext* scriptContext)

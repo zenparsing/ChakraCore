@@ -172,7 +172,7 @@ void JavascriptGenerator::ThrowIfExecuting(const char16* apiName)
     }
 }
 
-Var JavascriptGenerator::CallGenerator(ResumeYieldData* yieldData)
+Var JavascriptGenerator::CallGenerator(Var data, ResumeYieldKind resumeKind)
 {
     Assert(!IsExecuting());
 
@@ -181,10 +181,12 @@ Var JavascriptGenerator::CallGenerator(ResumeYieldData* yieldData)
     Var result = nullptr;
 
     {
-        GeneratorStateHelper helper { this };
-        Var thunkArgs[] = { this, yieldData };
+        ResumeYieldData yieldData(scriptContext, data, resumeKind);
+        Var thunkArgs[] = { this, &yieldData };
         Arguments arguments(_countof(thunkArgs), thunkArgs);
         JavascriptExceptionObject* exception = nullptr;
+
+        GeneratorStateHelper helper(this);
 
         try
         {
@@ -246,9 +248,7 @@ Var JavascriptGenerator::EntryNext(RecyclableObject* function, CallInfo callInfo
         return library->CreateIteratorResultObject(undefinedVar, library->GetTrue());
 
     generator->ThrowIfExecuting(_u("Generator.prototype.next"));
-
-    ResumeYieldData yieldData(input, nullptr);
-    return generator->CallGenerator(&yieldData);
+    return generator->CallGenerator(input, ResumeYieldKind::Normal);
 }
 
 Var JavascriptGenerator::EntryReturn(RecyclableObject* function, CallInfo callInfo, ...)
@@ -281,15 +281,7 @@ Var JavascriptGenerator::EntryReturn(RecyclableObject* function, CallInfo callIn
         return library->CreateIteratorResultObject(input, library->GetTrue());
 
     generator->ThrowIfExecuting(_u("Generator.prototype.return"));
-
-    auto* returnException = RecyclerNew(
-        scriptContext->GetRecycler(),
-        GeneratorReturnExceptionObject,
-        input,
-        scriptContext);
-
-    ResumeYieldData yieldData(input, returnException);
-    return generator->CallGenerator(&yieldData);
+    return generator->CallGenerator(input, ResumeYieldKind::Return);
 }
 
 Var JavascriptGenerator::EntryThrow(RecyclableObject* function, CallInfo callInfo, ...)
@@ -322,16 +314,7 @@ Var JavascriptGenerator::EntryThrow(RecyclableObject* function, CallInfo callInf
         JavascriptExceptionOperators::OP_Throw(input, scriptContext);
 
     generator->ThrowIfExecuting(_u("Generator.prototype.throw"));
-
-    auto* exception = RecyclerNew(
-        scriptContext->GetRecycler(),
-        JavascriptExceptionObject,
-        input,
-        scriptContext,
-        nullptr);
-
-    ResumeYieldData yieldData(input, exception);
-    return generator->CallGenerator(&yieldData);
+    return generator->CallGenerator(input, ResumeYieldKind::Throw);
 }
 
 #ifdef ENABLE_DEBUG_CONFIG_OPTIONS

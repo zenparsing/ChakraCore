@@ -12,16 +12,13 @@ class JavascriptAsyncGenerator : public JavascriptGenerator
     struct AsyncGeneratorRequest
     {
         Field(Var) data;
-        Field(JavascriptExceptionObject*) exceptionObj;
+        Field(ResumeYieldKind) kind;
         Field(JavascriptPromise*) promise;
 
-        AsyncGeneratorRequest(
-            Var data,
-            JavascriptExceptionObject* exceptionObj,
-            JavascriptPromise* promise) :
-                data(data),
-                exceptionObj(exceptionObj),
-                promise(promise) {}
+        AsyncGeneratorRequest(Var data, ResumeYieldKind kind, JavascriptPromise* promise) :
+            data(data),
+            kind(kind),
+            promise(promise) {}
     };
 
     using RequestQueue = DList<AsyncGeneratorRequest*, Recycler>;
@@ -81,7 +78,7 @@ public:
     }
 
     void ResumeNext();
-    void ResumeCoroutine(Var value, JavascriptExceptionObject* exception);
+    void ResumeCoroutine(Var value, ResumeYieldKind resumeKind);
     void ResolveNext(Var value);
     void RejectNext(Var reason);
     void UnwrapAndResolveNext(Var value);
@@ -112,7 +109,7 @@ public:
         Var thisValue,
         ScriptContext* scriptContext,
         Var input,
-        JavascriptExceptionObject* exceptionObj,
+        ResumeYieldKind resumeKind,
         const char16* apiNameForErrorMessage);
 };
 

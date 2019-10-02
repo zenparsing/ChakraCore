@@ -7,20 +7,26 @@
 namespace Js
 {
 
+enum class ResumeYieldKind
+{
+    Normal,
+    Throw,
+    Return
+};
+
 // Helper struct used to communicate to a yield point whether it was resumed via next(),
 // return(), or throw() and provide the data necessary for the corresponding action taken
 // (see OP_ResumeYield) `data` stores the value that was passed in as parameter to .next()
 struct ResumeYieldData
 {
-    Var const data;
-    JavascriptExceptionObject* const exceptionObj;
-    JavascriptGenerator* const generator;
+    ScriptContext* scriptContext;
+    Var data;
+    ResumeYieldKind kind;
 
-    ResumeYieldData(
-        Var data,
-        JavascriptExceptionObject* exceptionObj,
-        JavascriptGenerator* generator = nullptr) :
-            data(data), exceptionObj(exceptionObj), generator(generator) {}
+    ResumeYieldData(ScriptContext* scriptContext, Var data, ResumeYieldKind kind) :
+        scriptContext(scriptContext),
+        data(data),
+        kind(kind) {}
 };
 
 class JavascriptGenerator : public DynamicObject
@@ -61,7 +67,7 @@ public:
     }
 
     void ThrowIfExecuting(const char16* apiName);
-    Var CallGenerator(ResumeYieldData* yieldData);
+    Var CallGenerator(Var data, ResumeYieldKind resumeKind);
 
 private:
     Field(InterpreterStackFrame*) frame;

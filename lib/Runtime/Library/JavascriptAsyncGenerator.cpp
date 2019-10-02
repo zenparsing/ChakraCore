@@ -41,7 +41,7 @@ Var JavascriptAsyncGenerator::EntryNext(RecyclableObject* function, CallInfo cal
         thisValue,
         scriptContext,
         input,
-        nullptr,
+        ResumeYieldKind::Normal,
         _u("AsyncGenerator.prototype.next"));
 }
 
@@ -58,17 +58,11 @@ Var JavascriptAsyncGenerator::EntryReturn(RecyclableObject* function, CallInfo c
     Var thisValue = args[0];
     Var input = args.Info.Count > 1 ? args[1] : library->GetUndefined();
 
-    auto* returnException = RecyclerNew(
-        scriptContext->GetRecycler(),
-        GeneratorReturnExceptionObject,
-        input,
-        scriptContext);
-
     return EnqueueRequest(
         thisValue,
         scriptContext,
         input,
-        returnException,
+        ResumeYieldKind::Return,
         _u("AsyncGenerator.prototype.return"));
 }
 
@@ -85,18 +79,11 @@ Var JavascriptAsyncGenerator::EntryThrow(RecyclableObject* function, CallInfo ca
     Var thisValue = args[0];
     Var input = args.Info.Count > 1 ? args[1] : library->GetUndefined();
 
-    auto* exception = RecyclerNew(
-        scriptContext->GetRecycler(),
-        JavascriptExceptionObject,
-        input,
-        scriptContext,
-        nullptr);
-
     return EnqueueRequest(
         thisValue,
         scriptContext,
         input,
-        exception,
+        ResumeYieldKind::Throw,
         _u("AsyncGenerator.prototype.throw"));
 }
 
@@ -120,14 +107,10 @@ Var JavascriptAsyncGenerator::EntryAwaitFulfilledCallback(
     switch (state)
     {
         case PendingState::Await:
-            generator->ResumeCoroutine(value, nullptr);
+            generator->ResumeCoroutine(value, ResumeYieldKind::Normal);
             break;
         case PendingState::AwaitReturn:
-            generator->ResumeCoroutine(nullptr, RecyclerNew(
-                scriptContext->GetRecycler(),
-                GeneratorReturnExceptionObject,
-                value,
-                scriptContext));
+            generator->ResumeCoroutine(value, ResumeYieldKind::Return);
             break;
         case PendingState::Yield:
             generator->ResolveNext(value);
@@ -161,12 +144,7 @@ Var JavascriptAsyncGenerator::EntryAwaitRejectedCallback(
     {
         case PendingState::Await:
         case PendingState::AwaitReturn:
-            generator->ResumeCoroutine(nullptr, RecyclerNew(
-                scriptContext->GetRecycler(),
-                JavascriptExceptionObject,
-                value,
-                scriptContext,
-                nullptr));
+            generator->ResumeCoroutine(value, ResumeYieldKind::Throw);
             break;
         case PendingState::Yield:
             generator->RejectNext(value);
@@ -183,7 +161,7 @@ Var JavascriptAsyncGenerator::EnqueueRequest(
     Var thisValue,
     ScriptContext* scriptContext,
     Var input,
-    JavascriptExceptionObject* exceptionObj,
+    ResumeYieldKind resumeKind,
     const char16* apiNameForErrorMessage)
 {
     auto* promise = JavascriptPromise::CreateEnginePromise(scriptContext);
@@ -207,7 +185,7 @@ Var JavascriptAsyncGenerator::EnqueueRequest(
             scriptContext->GetRecycler(),
             AsyncGeneratorRequest,
             input,
-            exceptionObj,
+            resumeKind,
             promise);
 
         auto* generator = UnsafeVarTo<JavascriptAsyncGenerator>(thisValue);
@@ -228,12 +206,12 @@ void JavascriptAsyncGenerator::ResumeNext()
 
     AsyncGeneratorRequest* next = PeekRequest();
 
-    if (next->exceptionObj != nullptr)
+    if (next->kind != ResumeYieldKind::Normal)
     {
         if (IsSuspendedStart())
             SetState(GeneratorState::Completed);
 
-        if (next->exceptionObj->IsGeneratorReturnException())
+        if (next->kind == ResumeYieldKind::Return)
         {
             if (IsCompleted()) UnwrapAndResolveNext(next->data);
             else UnwrapReturnAndResumeCoroutine(next->data);
@@ -241,17 +219,17 @@ void JavascriptAsyncGenerator::ResumeNext()
         else
         {
             if (IsCompleted()) RejectNext(next->data);
-            else ResumeCoroutine(nullptr, next->exceptionObj);
+            else ResumeCoroutine(next->data, next->kind);
         }
     }
     else
     {
         if (IsCompleted()) ResolveNext(library->GetUndefined());
-        else ResumeCoroutine(next->data, nullptr);
+        else ResumeCoroutine(next->data, next->kind);
     }
 }
 
-void JavascriptAsyncGenerator::ResumeCoroutine(Var value, JavascriptExceptionObject* exception)
+void JavascriptAsyncGenerator::ResumeCoroutine(Var value, ResumeYieldKind resumeKind)
 {
     Assert(this->pendingState == PendingState::None);
 
@@ -260,8 +238,7 @@ void JavascriptAsyncGenerator::ResumeCoroutine(Var value, JavascriptExceptionObj
     try
     {
         // Call the internal (sync) generator entry point
-        ResumeYieldData yieldData(value, exception);
-        Var resultVar = CallGenerator(&yieldData);
+        Var resultVar = this->CallGenerator(value, resumeKind);
         result = VarTo<RecyclableObject>(resultVar);
     }
     catch (const JavascriptException& err)

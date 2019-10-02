@@ -10528,11 +10528,7 @@ void EmitYieldStar(
     byteCodeGenerator->EmitTryBlockHeadersAfterYield();
 
     // OP_ResumeYield will deal with the various resumption types
-    writer->Reg3(
-        Js::OpCode::ResumeYieldStar,
-        yieldStarReg,
-        funcInfo->yieldRegister,
-        iteratorLocation);
+    writer->Reg2(Js::OpCode::ResumeYieldStar, yieldStarReg, funcInfo->yieldRegister);
 
     funcInfo->ReleaseTmpRegister(iteratorLocation);
 

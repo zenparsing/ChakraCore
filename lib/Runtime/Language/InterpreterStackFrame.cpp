@@ -9479,12 +9479,14 @@ skipThunk:
         return (void*)m_inSlotsCount;
     }
 
-    Var InterpreterStackFrame::OP_ResumeYield(Var yieldDataVar, RegSlot yieldStarIterator)
+    Var InterpreterStackFrame::OP_ResumeYield(Var yieldDataVar)
     {
-        ResumeYieldData* yieldData = static_cast<ResumeYieldData*>(yieldDataVar);
-        RecyclableObject* iterator = yieldStarIterator != Constants::NoRegister ? VarTo<RecyclableObject>(GetNonVarReg(yieldStarIterator)) : nullptr;
+        return JavascriptOperators::OP_ResumeYield(static_cast<ResumeYieldData*>(yieldDataVar));
+    }
 
-        return JavascriptOperators::OP_ResumeYield(yieldData, iterator);
+    Var InterpreterStackFrame::OP_ResumeYieldStar(Var yieldDataVar)
+    {
+        return JavascriptOperators::OP_ResumeYieldStar(static_cast<ResumeYieldData*>(yieldDataVar));
     }
 
     void* InterpreterStackFrame::operator new(size_t byteSize, void* previousAllocation) throw()

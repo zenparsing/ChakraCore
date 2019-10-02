@@ -29212,10 +29212,10 @@ void
 Lowerer::LowerGeneratorHelper::LowerResumeGenerator(IR::Instr* instr)
 {
     IR::Opnd* srcOpnd1 = instr->UnlinkSrc1();
-    IR::Opnd* srcOpnd2 = instr->m_opcode == Js::OpCode::ResumeYieldStar ? instr->UnlinkSrc2() : IR::AddrOpnd::NewNull(this->func);
-    this->lowererMD.LoadHelperArgument(instr, srcOpnd2);
     this->lowererMD.LoadHelperArgument(instr, srcOpnd1);
-    this->lowererMD.ChangeToHelperCall(instr, IR::HelperResumeYield);
+    this->lowererMD.ChangeToHelperCall(instr, instr->m_opcode == Js::OpCode::ResumeYieldStar
+        ? IR::HelperResumeYield
+        : IR::HelperResumeYieldStar);
 }
 
 void
