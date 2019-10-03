@@ -1050,7 +1050,6 @@ bool IR::Instr::IsStElemVariant() const
 bool IR::Instr::DontHoistBailOnNoProfileAboveInGeneratorFunction() const
 {
     return this->m_opcode == Js::OpCode::ResumeYield ||
-        this->m_opcode == Js::OpCode::ResumeYieldStar ||
         this->m_opcode == Js::OpCode::GeneratorCreateInterpreterStackFrame;
 }
 

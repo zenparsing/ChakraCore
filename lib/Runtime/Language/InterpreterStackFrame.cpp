@@ -2484,8 +2484,7 @@ skipThunk:
             if (exception)
             {
                 bool skipException = false;
-                if (!exception->IsGeneratorReturnException() &&
-                    exception != scriptContext->GetThreadContext()->GetPendingSOErrorObject() &&
+                if (exception != scriptContext->GetThreadContext()->GetPendingSOErrorObject() &&
                     exception != scriptContext->GetThreadContext()->GetPendingOOMErrorObject())
                 {
                     skipException = exception->IsDebuggerSkip();
@@ -6711,12 +6710,6 @@ skipThunk:
         // Now that the stack is unwound, let's run the catch block.
         if (exception)
         {
-            if (exception->IsGeneratorReturnException())
-            {
-                // Generator return scenario, so no need to go into the catch block and we must rethrow to propagate the exception to down level
-                JavascriptExceptionOperators::DoThrow(exception, scriptContext);
-            }
-
             exception = exception->CloneIfStaticExceptionObject(scriptContext);
             // We've got a JS exception. Grab the exception object and assign it to the
             // catch object's location, then call the handler (i.e., we consume the Catch op here).
@@ -6927,11 +6920,6 @@ skipThunk:
         // Now that the stack is unwound, let's run the catch block.
         if (exception)
         {
-            if (exception->IsGeneratorReturnException())
-            {
-                // Generator return scenario, so no need to go into the catch block and we must rethrow to propagate the exception to down level
-                JavascriptExceptionOperators::DoThrow(exception, scriptContext);
-            }
             if (catchOffset != 0)
             {
                 exception = exception->CloneIfStaticExceptionObject(scriptContext);
@@ -7193,7 +7181,7 @@ skipThunk:
             SetNonVarReg(regOffset, reinterpret_cast<Js::Var>(currOffset));
         }
 
-        if (pExceptionObject && !pExceptionObject->IsGeneratorReturnException())
+        if (pExceptionObject)
         {
             // Clone static exception object early in case finally block overwrites it
             pExceptionObject = pExceptionObject->CloneIfStaticExceptionObject(scriptContext);
@@ -7251,7 +7239,7 @@ skipThunk:
             return;
         }
 
-        if (pExceptionObject && (endOfFinallyBlock || !pExceptionObject->IsGeneratorReturnException()))
+        if (pExceptionObject)
         {
             JavascriptExceptionOperators::DoThrow(pExceptionObject, scriptContext);
         }
@@ -7301,7 +7289,7 @@ skipThunk:
         }
 
         Js::JavascriptExceptionObject* exceptionObj = (Js::JavascriptExceptionObject*)GetNonVarReg(exceptionRegSlot);
-        if (exceptionObj && (endOfFinallyBlock || !exceptionObj->IsGeneratorReturnException()))
+        if (exceptionObj)
         {
             JavascriptExceptionOperators::DoThrow(exceptionObj, scriptContext);
         }
@@ -9482,11 +9470,6 @@ skipThunk:
     Var InterpreterStackFrame::OP_ResumeYield(Var yieldDataVar)
     {
         return JavascriptOperators::OP_ResumeYield(static_cast<ResumeYieldData*>(yieldDataVar));
-    }
-
-    Var InterpreterStackFrame::OP_ResumeYieldStar(Var yieldDataVar)
-    {
-        return JavascriptOperators::OP_ResumeYieldStar(static_cast<ResumeYieldData*>(yieldDataVar));
     }
 
     void* InterpreterStackFrame::operator new(size_t byteSize, void* previousAllocation) throw()

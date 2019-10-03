@@ -2952,7 +2952,6 @@ Lowerer::LowerRange(IR::Instr *instrStart, IR::Instr *instrEnd, bool defaultDoFa
         }
 
         case Js::OpCode::ResumeYield:
-        case Js::OpCode::ResumeYieldStar:
         {
             this->m_lowerGeneratorHelper.LowerResumeGenerator(instr);
             break;
@@ -29213,9 +29212,7 @@ Lowerer::LowerGeneratorHelper::LowerResumeGenerator(IR::Instr* instr)
 {
     IR::Opnd* srcOpnd1 = instr->UnlinkSrc1();
     this->lowererMD.LoadHelperArgument(instr, srcOpnd1);
-    this->lowererMD.ChangeToHelperCall(instr, instr->m_opcode == Js::OpCode::ResumeYieldStar
-        ? IR::HelperResumeYield
-        : IR::HelperResumeYieldStar);
+    this->lowererMD.ChangeToHelperCall(instr, IR::HelperResumeYield);
 }
 
 void

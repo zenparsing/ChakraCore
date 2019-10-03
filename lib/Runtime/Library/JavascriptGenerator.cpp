@@ -184,8 +184,6 @@ Var JavascriptGenerator::CallGenerator(Var data, ResumeYieldKind resumeKind)
         ResumeYieldData yieldData(scriptContext, data, resumeKind);
         Var thunkArgs[] = { this, &yieldData };
         Arguments arguments(_countof(thunkArgs), thunkArgs);
-        JavascriptExceptionObject* exception = nullptr;
-
         GeneratorStateHelper helper(this);
 
         try
@@ -202,15 +200,7 @@ Var JavascriptGenerator::CallGenerator(Var data, ResumeYieldKind resumeKind)
         }
         catch (const JavascriptException& err)
         {
-            exception = err.GetAndClear();
-        }
-
-        if (exception != nullptr)
-        {
-            if (!exception->IsGeneratorReturnException())
-                JavascriptExceptionOperators::DoThrowCheckClone(exception, scriptContext);
-
-            result = exception->GetThrownObject(nullptr);
+            JavascriptExceptionOperators::DoThrowCheckClone(err.GetAndClear(), scriptContext);
         }
     }
 

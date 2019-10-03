@@ -11,8 +11,8 @@ void EmitReference(ParseNode *pnode, ByteCodeGenerator *byteCodeGenerator, FuncI
 void EmitAssignment(ParseNode *asgnNode, ParseNode *lhs, Js::RegSlot rhsLocation, ByteCodeGenerator *byteCodeGenerator, FuncInfo *funcInfo);
 void EmitLoad(ParseNode *rhs, ByteCodeGenerator *byteCodeGenerator, FuncInfo *funcInfo);
 void EmitCall(ParseNodeCall* pnodeCall, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo, BOOL fReturnValue, BOOL fEvaluateComponents, Js::RegSlot overrideThisLocation = Js::Constants::NoRegister, Js::RegSlot newTargetLocation = Js::Constants::NoRegister);
-void EmitYield(Js::RegSlot inputLocation, Js::RegSlot resultLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo, bool isAwait = false);
 void EmitDummyYield(ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo);
+void EmitYield(Js::RegSlot inputLocation, Js::RegSlot resultLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo);
 void EmitAwait(Js::RegSlot inputLocation, Js::RegSlot resultLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo);
 
 void EmitUseBeforeDeclaration(Symbol *sym, ByteCodeGenerator *byteCodeGenerator, FuncInfo *funcInfo);
@@ -10382,14 +10382,47 @@ void ByteCodeGenerator::EmitTryBlockHeadersAfterYield()
     }
 }
 
+void EmitYieldResultAndResume(
+    Js::RegSlot resultLocation,
+    ByteCodeGenerator* byteCodeGenerator,
+    FuncInfo* funcInfo)
+{
+    // The caller is expected to have placed the yield result object into 
+    // funcInfo->yieldRegister before calling this function
+    auto* writer = byteCodeGenerator->Writer();
+    byteCodeGenerator->EmitLeaveOpCodesBeforeYield();
+    writer->Reg2(Js::OpCode::Yield, funcInfo->yieldRegister, funcInfo->yieldRegister);
+    byteCodeGenerator->EmitTryBlockHeadersAfterYield();
+
+    Js::RegSlot resumeObjectReg = funcInfo->AcquireTmpRegister();
+    writer->Reg2(Js::OpCode::ResumeYield, resumeObjectReg, funcInfo->yieldRegister);
+
+    // Get the value and done properties of the resume object
+    Js::RegSlot doneReg = funcInfo->AcquireTmpRegister();
+    EmitIteratorComplete(doneReg, resumeObjectReg, byteCodeGenerator, funcInfo);
+    EmitIteratorValue(resultLocation, resumeObjectReg, byteCodeGenerator, funcInfo);
+
+    // Branch to normal resume if done is false
+    Js::ByteCodeLabel resumeNormal = writer->DefineLabel();
+    writer->BrReg1(Js::OpCode::BrFalse_A, resumeNormal, doneReg);
+    funcInfo->ReleaseTmpRegister(doneReg);
+    funcInfo->ReleaseTmpRegister(resumeObjectReg);
+
+    // Return has been called on the generator; set the return register value
+    // and branch to function exit
+    writer->Reg2(Js::OpCode::Ld_A, ByteCodeGenerator::ReturnRegister, resultLocation);
+    writer->Br(funcInfo->singleExit);
+
+    writer->MarkLabel(resumeNormal);
+}
+
 void EmitDummyYield(ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo)
 {
-    byteCodeGenerator->EmitLeaveOpCodesBeforeYield();
+    // TODO(zenparsing): I don't think that we really need to emit the leaves/trys
+    // because there must be no try/catch. Correct? We can assert this.
     byteCodeGenerator->Writer()->Reg1(Js::OpCode::LdUndef, funcInfo->yieldRegister);
-    byteCodeGenerator->Writer()->Reg2(Js::OpCode::Yield, funcInfo->yieldRegister, funcInfo->yieldRegister);
-    byteCodeGenerator->EmitTryBlockHeadersAfterYield();
     Js::RegSlot unusedResult = funcInfo->AcquireTmpRegister();
-    byteCodeGenerator->Writer()->Reg2(Js::OpCode::ResumeYield, unusedResult, funcInfo->yieldRegister);
+    EmitYieldResultAndResume(unusedResult, byteCodeGenerator, funcInfo);
     funcInfo->ReleaseTmpRegister(unusedResult);
 }
 
@@ -10399,65 +10432,60 @@ void EmitAwait(
     ByteCodeGenerator* byteCodeGenerator,
     FuncInfo* funcInfo)
 {
-    EmitYield(inputLocation, resultLocation, byteCodeGenerator, funcInfo, true);
+    byteCodeGenerator->Writer()->Reg1(Js::OpCode::NewScObjectSimple, funcInfo->yieldRegister);
+
+    byteCodeGenerator->Writer()->PatchableProperty(
+        Js::OpCode::StFld,
+        inputLocation,
+        funcInfo->yieldRegister,
+        funcInfo->FindOrAddInlineCacheId(
+            funcInfo->yieldRegister,
+            Js::PropertyIds::value,
+            false,
+            true));
+
+    byteCodeGenerator->Writer()->PatchableProperty(
+        Js::OpCode::StFld,
+        funcInfo->trueConstantRegister,
+        funcInfo->yieldRegister,
+        funcInfo->FindOrAddInlineCacheId(
+            funcInfo->yieldRegister,
+            Js::PropertyIds::_internalSymbolIsAwait,
+            false,
+            true));
+
+    EmitYieldResultAndResume(resultLocation, byteCodeGenerator, funcInfo);
 }
 
 void EmitYield(
     Js::RegSlot inputLocation,
     Js::RegSlot resultLocation,
     ByteCodeGenerator* byteCodeGenerator,
-    FuncInfo* funcInfo,
-    bool isAwait)
+    FuncInfo* funcInfo)
 {
-    auto* writer = byteCodeGenerator->Writer();
+    byteCodeGenerator->Writer()->Reg1(Js::OpCode::NewScObjectSimple, funcInfo->yieldRegister);
 
-    writer->Reg1(Js::OpCode::NewScObjectSimple, funcInfo->yieldRegister);
-
-    uint cacheId = funcInfo->FindOrAddInlineCacheId(
-        funcInfo->yieldRegister,
-        Js::PropertyIds::value,
-        false,
-        true);
-
-    writer->PatchableProperty(
+    byteCodeGenerator->Writer()->PatchableProperty(
         Js::OpCode::StFld,
         inputLocation,
         funcInfo->yieldRegister,
-        cacheId);
-
-    if (isAwait)
-    {
-        cacheId = funcInfo->FindOrAddInlineCacheId(
+        funcInfo->FindOrAddInlineCacheId(
             funcInfo->yieldRegister,
-            Js::PropertyIds::_internalSymbolIsAwait,
+            Js::PropertyIds::value,
             false,
-            true);
+            true));
 
-        writer->PatchableProperty(
-            Js::OpCode::StFld,
-            funcInfo->trueConstantRegister,
-            funcInfo->yieldRegister,
-            cacheId);
-    }
-    else
-    {
-        cacheId = funcInfo->FindOrAddInlineCacheId(
+    byteCodeGenerator->Writer()->PatchableProperty(
+        Js::OpCode::StFld,
+        funcInfo->falseConstantRegister,
+        funcInfo->yieldRegister,
+        funcInfo->FindOrAddInlineCacheId(
             funcInfo->yieldRegister,
             Js::PropertyIds::done,
             false,
-            true);
+            true));
 
-        writer->PatchableProperty(
-            Js::OpCode::StFld,
-            funcInfo->falseConstantRegister,
-            funcInfo->yieldRegister,
-            cacheId);
-    }
-
-    byteCodeGenerator->EmitLeaveOpCodesBeforeYield();
-    writer->Reg2(Js::OpCode::Yield, funcInfo->yieldRegister, funcInfo->yieldRegister);
-    byteCodeGenerator->EmitTryBlockHeadersAfterYield();
-    writer->Reg2(Js::OpCode::ResumeYield, resultLocation, funcInfo->yieldRegister);
+    EmitYieldResultAndResume(resultLocation, byteCodeGenerator, funcInfo);
 }
 
 void EmitYieldStar(
@@ -10523,12 +10551,12 @@ void EmitYieldStar(
 
     // Yield the iterator result object
     writer->Reg2(Js::OpCode::Ld_A, funcInfo->yieldRegister, yieldStarReg);
-    byteCodeGenerator->EmitLeaveOpCodesBeforeYield();
-    writer->Reg2(Js::OpCode::Yield, funcInfo->yieldRegister, funcInfo->yieldRegister);
-    byteCodeGenerator->EmitTryBlockHeadersAfterYield();
 
-    // OP_ResumeYield will deal with the various resumption types
-    writer->Reg2(Js::OpCode::ResumeYieldStar, yieldStarReg, funcInfo->yieldRegister);
+    EmitYieldResultAndResume(yieldStarReg, byteCodeGenerator, funcInfo);
+
+    // TODO(zenparsing): We need to wrap the resume yield in a try in order
+    // to pick up exceptions, and we also need to deal correctly with done
+    // results.
 
     funcInfo->ReleaseTmpRegister(iteratorLocation);
 

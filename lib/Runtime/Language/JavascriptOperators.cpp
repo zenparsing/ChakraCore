@@ -10271,7 +10271,7 @@ SetElementIHelper_INDEX_TYPE_IS_NUMBER:
 
     Var JavascriptOperators::OP_ResumeYield(ResumeYieldData* yieldData)
     {
-        JIT_HELPER_REENTRANT_HEADER(ResumeYield);
+        JIT_HELPER_NOT_REENTRANT_NOLOCK_HEADER(ResumeYield);
 
         auto* scriptContext = yieldData->scriptContext;
 
@@ -10291,32 +10291,14 @@ SetElementIHelper_INDEX_TYPE_IS_NUMBER:
                 scriptContext,
                 true);
         }
-        else if (yieldData->kind == ResumeYieldKind::Return)
-        {
-            auto* returnException = RecyclerNew(
-                scriptContext->GetRecycler(),
-                GeneratorReturnExceptionObject,
-                yieldData->data,
-                scriptContext);
 
-            // Do not use ThrowExceptionObject for return exceptions since
-            // these exceptions are not real exceptions
-            JavascriptExceptionOperators::DoThrow(returnException, scriptContext);
-        }
-        else
-        {
-            return yieldData->data;
-        }
+        // TODO(zenparsing): How can we optimize the general case so
+        // that we aren't allocating a new object for every resume?
+        return scriptContext->GetLibrary()->CreateIteratorResultObject(
+            yieldData->data,
+            yieldData->kind == ResumeYieldKind::Return);
 
         JIT_HELPER_END(ResumeYield);
-    }
-
-    Var JavascriptOperators::OP_ResumeYieldStar(ResumeYieldData* yieldData)
-    {
-        JIT_HELPER_REENTRANT_HEADER(ResumeYieldStar);
-        // TODO(zenparsing)
-        return yieldData->data;
-        JIT_HELPER_END(ResumeYieldStar);
     }
 
     Var JavascriptOperators::OP_NewAsyncFromSyncIterator(Var syncIterator, ScriptContext* scriptContext)

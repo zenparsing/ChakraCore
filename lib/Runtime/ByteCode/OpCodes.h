@@ -236,7 +236,6 @@ MACRO(                  Ret,                Empty,          OpSideEffect|OpUseAl
 MACRO_WMS(              Yield,              Reg2,           OpSideEffect|OpUseAllFields)                        // Yield from generator function
 // TODO(zenparsing): Are these flags correct?
 MACRO_WMS(              ResumeYield,        Reg2,           OpSideEffect)
-MACRO_WMS(              ResumeYieldStar,    Reg2,           OpSideEffect)
 
 // Unary operations
 MACRO_WMS(              Incr_A,             Reg2,           OpTempNumberProducing|OpOpndHasImplicitCall|OpDoNotTransfer|OpTempNumberSources|OpTempObjectSources|OpCanCSE|OpPostOpDbgBailOut|OpProducesNumber)     // Increment

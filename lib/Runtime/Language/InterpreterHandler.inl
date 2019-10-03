@@ -404,7 +404,6 @@ EXDEF2_WMS(TRYBR2,                  TryFinallyWithYield,        OP_TryFinallyWit
 EXDEF2    (EMPTY,                   ResumeCatch,                OP_ResumeCatch)
 EXDEF2_WMS(TRYBR2,                  ResumeFinally,              OP_ResumeFinally)
   DEF2_WMS(A1NonVarToA1,            ResumeYield,                OP_ResumeYield)
-  DEF2_WMS(A1NonVarToA1,            ResumeYieldStar,            OP_ResumeYieldStar)
 EXDEF2    (W1,                      RuntimeTypeError,           JavascriptExceptionOperators::OP_RuntimeTypeError)
 EXDEF2    (W1,                      RuntimeReferenceError,      JavascriptExceptionOperators::OP_RuntimeReferenceError)
 EXDEF3    (CUSTOM_L_R0,             SpreadArrayLiteral,         OP_SpreadArrayLiteral, Reg2Aux)

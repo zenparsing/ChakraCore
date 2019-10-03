@@ -2134,19 +2134,6 @@ IRBuilder::BuildReg3(Js::OpCode newOpcode, uint32 offset, Js::RegSlot dstRegSlot
         instr = IR::Instr::New(newOpcode, dstOpnd, src1Opnd, src2Opnd, m_func);
     }
 
-    if (newOpcode == Js::OpCode::ResumeYieldStar)
-    {
-        IR::Instr* loadResumeYieldData = IR::Instr::New(Js::OpCode::GeneratorLoadResumeYieldData, src1Opnd /* dst */, m_func);
-        this->AddInstr(loadResumeYieldData, offset);
-
-        // Insert bailout for debugger, since we are bailing out to the ResumeYieldStar instruction (OP_ResumeYieldStar) in the interpreter,
-        // we have to load the ResumeYieldData first
-        if (this->m_func->IsJitInDebugMode())
-        {
-            this->InsertBailOutForDebugger(offset, IR::BailOutForceByFlag | IR::BailOutBreakPointInFunction | IR::BailOutStep);
-        }
-    }
-
     this->AddInstr(instr, offset);
 
     if (wasNotProfiled && DoBailOnNoProfile())
