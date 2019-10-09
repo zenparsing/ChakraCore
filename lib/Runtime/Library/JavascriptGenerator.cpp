@@ -9,6 +9,9 @@ using namespace Js;
 
 namespace
 {
+    // TODO(zenparsing): The ability to set state directly should remain "internal"
+    // to the generator, but the current SetState api is bothersomely public...
+
     // RAII helper to set the state of the generator to completed if an exception is 
     // thrown or if the save state InterpreterStackFrame is never created implying 
     // the generator is JITed and returned without ever yielding
@@ -58,7 +61,7 @@ JavascriptGenerator::JavascriptGenerator(
         DynamicObject(type),
         args(args),
         frame(nullptr),
-        state(GeneratorState::Suspended),
+        state(GeneratorState::SuspendedStart),
         scriptFunction(scriptFunction) {}
 
 JavascriptGenerator* JavascriptGenerator::New(
@@ -103,17 +106,6 @@ JavascriptGenerator* JavascriptGenerator::New(
 #endif
 
     return RecyclerNew(recycler, JavascriptGenerator, generatorType, heapArgs, scriptFunction);
-}
-
-JavascriptGenerator *JavascriptGenerator::New(
-    Recycler* recycler,
-    DynamicType* generatorType,
-    Arguments& args,
-    JavascriptGenerator::GeneratorState state)
-{
-    auto* obj = JavascriptGenerator::New(recycler, generatorType, args, nullptr);
-    obj->SetState(state);
-    return obj;
 }
 
 template<>
@@ -265,7 +257,7 @@ Var JavascriptGenerator::EntryReturn(RecyclableObject* function, CallInfo callIn
     auto* generator = UnsafeVarTo<JavascriptGenerator>(args[0]);
 
     if (generator->IsSuspendedStart())
-        generator->SetState(GeneratorState::Completed);
+        generator->SetCompleted();
 
     if (generator->IsCompleted())
         return library->CreateIteratorResultObject(input, library->GetTrue());
@@ -298,7 +290,7 @@ Var JavascriptGenerator::EntryThrow(RecyclableObject* function, CallInfo callInf
     auto* generator = UnsafeVarTo<JavascriptGenerator>(args[0]);
 
     if (generator->IsSuspendedStart())
-        generator->SetState(GeneratorState::Completed);
+        generator->SetCompleted();
 
     if (generator->IsCompleted())
         JavascriptExceptionOperators::OP_Throw(input, scriptContext);
@@ -338,6 +330,17 @@ void JavascriptGenerator::OutputBailInTrace(JavascriptGenerator* generator)
 #endif
 
 #if ENABLE_TTD
+
+JavascriptGenerator *JavascriptGenerator::New(
+    Recycler* recycler,
+    DynamicType* generatorType,
+    Arguments& args,
+    JavascriptGenerator::GeneratorState state)
+{
+    auto* obj = JavascriptGenerator::New(recycler, generatorType, args, nullptr);
+    obj->SetState(state);
+    return obj;
+}
 
 void JavascriptGenerator::MarkVisitKindSpecificPtrs(TTD::SnapshotExtractor* extractor)
 {
@@ -471,7 +474,7 @@ void JavascriptGenerator::ExtractSnapObjectDataInto(TTD::NSSnapObjects::SnapObje
     }
 
     // Copy the CallInfo data into the struct
-    gi->arguments_callInfo_count = this->args.Info.Count;
+    gi->arguments_callInfo_count = gi->arguments_count > 0 ? this->args.Info.Count : 0;
     gi->arguments_callInfo_flags = this->args.Info.Flags;
 
     // TODO:  understand why there's a mis-match between args.Info.Count and GetArgCountWithExtraArgs

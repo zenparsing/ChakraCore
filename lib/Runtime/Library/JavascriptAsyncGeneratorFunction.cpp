@@ -72,5 +72,7 @@ Var JavascriptAsyncGeneratorFunction::EntryAsyncGeneratorFunctionImplementation(
     }
     END_SAFE_REENTRANT_CALL
 
+    generator->SetSuspendedStart();
+
     return generator;
 }

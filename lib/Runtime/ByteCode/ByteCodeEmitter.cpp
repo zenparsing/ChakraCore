@@ -11,7 +11,7 @@ void EmitReference(ParseNode *pnode, ByteCodeGenerator *byteCodeGenerator, FuncI
 void EmitAssignment(ParseNode *asgnNode, ParseNode *lhs, Js::RegSlot rhsLocation, ByteCodeGenerator *byteCodeGenerator, FuncInfo *funcInfo);
 void EmitLoad(ParseNode *rhs, ByteCodeGenerator *byteCodeGenerator, FuncInfo *funcInfo);
 void EmitCall(ParseNodeCall* pnodeCall, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo, BOOL fReturnValue, BOOL fEvaluateComponents, Js::RegSlot overrideThisLocation = Js::Constants::NoRegister, Js::RegSlot newTargetLocation = Js::Constants::NoRegister);
-void EmitDummyYield(ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo);
+void EmitStartupYield(ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo);
 void EmitYield(Js::RegSlot inputLocation, Js::RegSlot resultLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo);
 void EmitAwait(Js::RegSlot inputLocation, Js::RegSlot resultLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo);
 
@@ -1760,15 +1760,6 @@ void ByteCodeGenerator::SetClosureRegisters(FuncInfo* funcInfo, Js::FunctionBody
 
 void ByteCodeGenerator::FinalizeRegisters(FuncInfo* funcInfo, Js::FunctionBody* byteCodeFunction)
 {
-    // Generators use 'false' when creating their IteratorResult object
-    if (byteCodeFunction->IsGenerator())
-        funcInfo->AssignFalseConstRegister();
-
-    // Async functions and async generators use 'true' when setting the
-    // _internalSymbolIsAwait property on IteratorResult objects
-    if (byteCodeFunction->IsAsync())
-        funcInfo->AssignTrueConstRegister();
-
     if (funcInfo->NeedEnvRegister())
     {
         bool constReg = !funcInfo->GetIsTopLevelEventHandler() && funcInfo->IsGlobalFunction() && !(this->flags & fscrEval);
@@ -3068,7 +3059,7 @@ void ByteCodeGenerator::EmitOneFunction(ParseNodeFnc *pnodeFnc)
         // to be verified. Ideally if the function has simple parameter list then we can avoid inserting the opcode and the additional call.
         if (pnodeFnc->IsGenerator() && !pnodeFnc->IsModule())
         {
-            EmitDummyYield(this, funcInfo);
+            EmitStartupYield(this, funcInfo);
         }
 
         DefineUserVars(funcInfo);
@@ -3087,7 +3078,7 @@ void ByteCodeGenerator::EmitOneFunction(ParseNodeFnc *pnodeFnc)
         // insert a yield at the top of a module body so that function definitions can be hoisted accross modules
         if (pnodeFnc->IsModule())
         {
-            EmitDummyYield(this, funcInfo);
+            EmitStartupYield(this, funcInfo);
         }
 
         if (pnodeFnc->HasNonSimpleParameterList() || !funcInfo->IsBodyAndParamScopeMerged())
@@ -9440,7 +9431,7 @@ void EmitGeneratingBooleanExpression(ParseNode *expr, Js::ByteCodeLabel trueLabe
 
 // used by while and for loops
 void EmitLoop(
-    ParseNodeLoop *loopNode,
+    ParseNodeStmt *loopNode,
     ParseNode *cond,
     ParseNode *body,
     ParseNode *incr,
@@ -9456,7 +9447,7 @@ void EmitLoop(
     Js::ByteCodeLabel continuePastLoop = byteCodeGenerator->Writer()->DefineLabel();
 
     uint loopId = byteCodeGenerator->Writer()->EnterLoop(loopEntrance);
-    loopNode->loopId = loopId;
+    byteCodeGenerator->PushJumpCleanup({loopNode, loopId});
 
     if (doWhile)
     {
@@ -9515,10 +9506,11 @@ void EmitLoop(
         byteCodeGenerator->Writer()->MarkLabel(loopNode->breakLabel);
     }
 
+    byteCodeGenerator->PopJumpCleanup();
     byteCodeGenerator->Writer()->ExitLoop(loopId);
 }
 
-void ByteCodeGenerator::EmitInvertedLoop(ParseNodeLoop* outerLoop, ParseNodeFor* invertedLoop, FuncInfo* funcInfo)
+void ByteCodeGenerator::EmitInvertedLoop(ParseNodeStmt* outerLoop, ParseNodeFor* invertedLoop, FuncInfo* funcInfo)
 {
     Js::ByteCodeLabel invertedLoopLabel = this->m_writer.DefineLabel();
     Js::ByteCodeLabel afterInvertedLoop = this->m_writer.DefineLabel();
@@ -9753,7 +9745,7 @@ void EmitForIn(ParseNodeForInOrForOf *loopNode,
 
     // Need to increment loop count whether we are going into profile or not for HasLoop()
     uint loopId = byteCodeGenerator->Writer()->EnterLoop(loopEntrance);
-    loopNode->loopId = loopId;
+    byteCodeGenerator->PushJumpCleanupForLoop(loopNode, loopId);
 
     // The EndStatement will happen in the EmitForInOfLoopBody function
     byteCodeGenerator->StartStatement(loopNode->pnodeLval);
@@ -9763,6 +9755,7 @@ void EmitForIn(ParseNodeForInOrForOf *loopNode,
 
     EmitForInOfLoopBody(loopNode, loopEntrance, continuePastLoop, byteCodeGenerator, funcInfo, fReturnValue);
 
+    byteCodeGenerator->PopJumpCleanup();
     byteCodeGenerator->Writer()->ExitLoop(loopId);
 
     funcInfo->ReleaseForInLoopLevel(forInLoopLevel);
@@ -9911,7 +9904,7 @@ void EmitForInOrForOf(ParseNodeForInOrForOf *loopNode, ByteCodeGenerator *byteCo
 
     // Need to increment loop count whether we are going into profile or not for HasLoop()
     uint loopId = byteCodeGenerator->Writer()->EnterLoop(loopEntrance);
-    loopNode->loopId = loopId;
+    byteCodeGenerator->PushJumpCleanupForLoop(loopNode, loopId);
 
     byteCodeGenerator->StartStatement(loopNode->pnodeLval);
 
@@ -9947,6 +9940,7 @@ void EmitForInOrForOf(ParseNodeForInOrForOf *loopNode, ByteCodeGenerator *byteCo
 
     EmitForInOfLoopBody(loopNode, loopEntrance, continuePastLoop, byteCodeGenerator, funcInfo, fReturnValue);
 
+    byteCodeGenerator->PopJumpCleanup();
     byteCodeGenerator->Writer()->ExitLoop(loopId);
 
     EmitCatchAndFinallyBlocks(catchLabel,
@@ -9983,47 +9977,49 @@ void EmitArrayLiteral(ParseNode *pnode, ByteCodeGenerator *byteCodeGenerator, Fu
     }
 }
 
-void EmitJumpCleanup(ParseNodeStmt *pnode, ParseNode *pnodeTarget, ByteCodeGenerator *byteCodeGenerator, FuncInfo * funcInfo)
+void ByteCodeGenerator::EmitJumpCleanup(ParseNode* target, FuncInfo* funcInfo)
 {
-    for (; pnode != pnodeTarget; pnode = pnode->pnodeOuter)
+    for (auto iter = this->jumpCleanupList->GetIterator(); iter.Next();)
     {
-        switch (pnode->nop)
+        const JumpCleanupInfo& info = iter.Data();
+        if (info.node == target)
+            break;
+
+        bool isLoop = false;
+
+        switch (info.node->nop)
         {
-        case knopTry:
-        case knopCatch:
-        case knopFinally:
-            // We insert OpCode::Leave when there is a 'return' inside try/catch/finally.
-            // This is for flow control and does not participate in identifying boundaries of try/catch blocks,
-            // thus we shouldn't call RecordCrossFrameEntryExitRecord() here.
-            byteCodeGenerator->Writer()->Empty(Js::OpCode::Leave);
-            break;
+            case knopTry:
+            case knopCatch:
+            case knopFinally:
+                // We insert OpCode::Leave when there is a 'return' inside try/catch/finally.
+                // This is for flow control and does not participate in identifying boundaries 
+                // of try/catch blocks, thus we shouldn't call RecordCrossFrameEntryExitRecord
+                // here.
+                this->Writer()->Empty(Js::OpCode::Leave);
+                break;
 
-        case knopForAwaitOf:
-        case knopForOf:
-#if ENABLE_PROFILE_INFO
-            if (Js::DynamicProfileInfo::EnableImplicitCallFlags(funcInfo->GetParsedFunctionBody()))
-            {
-                byteCodeGenerator->Writer()->Unsigned1(Js::OpCode::ProfiledLoopEnd, pnode->AsParseNodeLoop()->loopId);
-            }
-#endif
-            // The ForOf loop code is wrapped around try..catch..finally - Forcing couple Leave bytecode over here
-            byteCodeGenerator->Writer()->Empty(Js::OpCode::Leave);
-            byteCodeGenerator->Writer()->Empty(Js::OpCode::Leave);
-            break;
+            case knopForAwaitOf:
+            case knopForOf:
+                // The ForOf loop code is wrapped around try/catch/finally
+                this->Writer()->Empty(Js::OpCode::Leave);
+                this->Writer()->Empty(Js::OpCode::Leave);
+                isLoop = true;
+                break;
 
-#if ENABLE_PROFILE_INFO
-        case knopWhile:
-        case knopDoWhile:
-        case knopFor:
-        case knopForIn:
-            if (Js::DynamicProfileInfo::EnableImplicitCallFlags(funcInfo->GetParsedFunctionBody()))
-            {
-                byteCodeGenerator->Writer()->Unsigned1(Js::OpCode::ProfiledLoopEnd, pnode->AsParseNodeLoop()->loopId);
-            }
-            break;
-#endif
-
+            case knopWhile:
+            case knopDoWhile:
+            case knopFor:
+            case knopForIn:
+                isLoop = true;
+                break;
         }
+
+#if ENABLE_PROFILE_INFO
+        if (isLoop && Js::DynamicProfileInfo::EnableImplicitCallFlags(funcInfo->GetParsedFunctionBody()))
+            this->Writer()->Unsigned1(Js::OpCode::ProfiledLoopEnd, info.loopId);
+#endif
+
     }
 }
 
@@ -10382,47 +10378,123 @@ void ByteCodeGenerator::EmitTryBlockHeadersAfterYield()
     }
 }
 
-void EmitYieldResultAndResume(
-    Js::RegSlot resultLocation,
+// TODO(zenparsing): Many of these signatures take the input first and the dest second
+// but many other helpers are reversed. Which should it be?
+void EmitYieldAndResume(
+    Js::RegSlot inputReg,
+    Js::RegSlot resumeValueReg,
+    Js::ByteCodeLabel resumeNormalLabel,
+    Js::ByteCodeLabel resumeThrowLabel,
     ByteCodeGenerator* byteCodeGenerator,
     FuncInfo* funcInfo)
 {
-    // The caller is expected to have placed the yield result object into 
-    // funcInfo->yieldRegister before calling this function
     auto* writer = byteCodeGenerator->Writer();
+
+    if (inputReg != funcInfo->yieldRegister)
+        writer->Reg2(Js::OpCode::Ld_A, funcInfo->yieldRegister, inputReg);
+
     byteCodeGenerator->EmitLeaveOpCodesBeforeYield();
     writer->Reg2(Js::OpCode::Yield, funcInfo->yieldRegister, funcInfo->yieldRegister);
     byteCodeGenerator->EmitTryBlockHeadersAfterYield();
 
+    Js::RegSlot resumeKindReg = funcInfo->AcquireTmpRegister();
     Js::RegSlot resumeObjectReg = funcInfo->AcquireTmpRegister();
+
+    // Get a resume yield object with "kind" and "value" properties
     writer->Reg2(Js::OpCode::ResumeYield, resumeObjectReg, funcInfo->yieldRegister);
 
-    // Get the value and done properties of the resume object
-    Js::RegSlot doneReg = funcInfo->AcquireTmpRegister();
-    EmitIteratorComplete(doneReg, resumeObjectReg, byteCodeGenerator, funcInfo);
-    EmitIteratorValue(resultLocation, resumeObjectReg, byteCodeGenerator, funcInfo);
+    // Get the "kind" property of the resume object
+    writer->PatchableProperty(
+        Js::OpCode::LdFld,
+        resumeKindReg,
+        resumeObjectReg,
+        funcInfo->FindOrAddInlineCacheId(resumeObjectReg, Js::PropertyIds::kind, false, false));
 
-    // Branch to normal resume if done is false
-    Js::ByteCodeLabel resumeNormal = writer->DefineLabel();
-    writer->BrReg1(Js::OpCode::BrFalse_A, resumeNormal, doneReg);
-    funcInfo->ReleaseTmpRegister(doneReg);
+    // Get the "value" property of the resume object
+    writer->PatchableProperty(
+        Js::OpCode::LdFld,
+        resumeValueReg,
+        resumeObjectReg,
+        funcInfo->FindOrAddInlineCacheId(resumeObjectReg, Js::PropertyIds::value, false, false));
+
     funcInfo->ReleaseTmpRegister(resumeObjectReg);
 
-    // Return has been called on the generator; set the return register value
-    // and branch to function exit
-    writer->Reg2(Js::OpCode::Ld_A, ByteCodeGenerator::ReturnRegister, resultLocation);
-    writer->Br(funcInfo->singleExit);
+    Js::RegSlot normalConst = funcInfo->constantToRegister.Lookup(
+        (uint)Js::ResumeYieldKind::Normal,
+        Js::Constants::NoRegister);
 
+    Js::RegSlot throwConst = funcInfo->constantToRegister.Lookup(
+        (uint)Js::ResumeYieldKind::Throw,
+        Js::Constants::NoRegister);
+
+    Assert(throwConst != Js::Constants::NoRegister && normalConst != Js::Constants::NoRegister);
+
+    // Branch to normal resume if kind is Normal
+    writer->BrReg2(Js::OpCode::BrSrEq_A, resumeNormalLabel, resumeKindReg, normalConst);
+
+    // Branch to throw if kind is Throw
+    writer->BrReg2(Js::OpCode::BrSrEq_A, resumeThrowLabel, resumeKindReg, throwConst);
+
+    funcInfo->ReleaseTmpRegister(resumeKindReg);
+}
+
+void EmitReturnFromYield(
+    Js::RegSlot resultReg,
+    ByteCodeGenerator* byteCodeGenerator,
+    FuncInfo* funcInfo)
+{
+    auto* writer = byteCodeGenerator->Writer();
+    writer->Reg2(Js::OpCode::Ld_A, ByteCodeGenerator::ReturnRegister, resultReg);
+    byteCodeGenerator->EmitJumpCleanup(nullptr, funcInfo);
+    writer->Br(funcInfo->singleExit);
+}
+
+void EmitYieldIteratorResult(
+    Js::RegSlot inputReg,
+    Js::RegSlot resultReg,
+    ByteCodeGenerator* byteCodeGenerator,
+    FuncInfo* funcInfo)
+{
+    Assert(inputReg == funcInfo->yieldRegister);
+
+    auto* writer = byteCodeGenerator->Writer();
+
+    Js::ByteCodeLabel resumeNormal = writer->DefineLabel();
+    Js::ByteCodeLabel resumeThrow = writer->DefineLabel();
+
+    EmitYieldAndResume(
+        inputReg,
+        resultReg,
+        resumeNormal,
+        resumeThrow,
+        byteCodeGenerator,
+        funcInfo);
+
+    // Return case: set the return register value and branch to function exit
+    EmitReturnFromYield(resultReg, byteCodeGenerator, funcInfo);
+
+    // Throw case: throw the resume value
+    writer->MarkLabel(resumeThrow);
+    writer->Reg1(Js::OpCode::Throw, resultReg);
+
+    // Normal case: continue (value is already in result register)
     writer->MarkLabel(resumeNormal);
 }
 
-void EmitDummyYield(ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo)
+void EmitStartupYield(ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo)
 {
-    // TODO(zenparsing): I don't think that we really need to emit the leaves/trys
-    // because there must be no try/catch. Correct? We can assert this.
-    byteCodeGenerator->Writer()->Reg1(Js::OpCode::LdUndef, funcInfo->yieldRegister);
+    // Generators are "paused" after evaluating the parameter list. A synthetic
+    // yield is inserted at the beginning of the function for this purpose. It
+    // has the following special properties: it can only be resumed with a "normal"
+    // completion (the other types are handled in the generator logic), the
+    // resume value is not observable to user code, and it cannot be contained
+    // within a try scope.
+    Assert(byteCodeGenerator->tryScopeRecordsList.IsEmpty());
+    auto* writer = byteCodeGenerator->Writer();
     Js::RegSlot unusedResult = funcInfo->AcquireTmpRegister();
-    EmitYieldResultAndResume(unusedResult, byteCodeGenerator, funcInfo);
+    writer->Reg1(Js::OpCode::LdUndef, funcInfo->yieldRegister);
+    writer->Reg2(Js::OpCode::Yield, funcInfo->yieldRegister, funcInfo->yieldRegister);
+    writer->Reg2(Js::OpCode::ResumeYield, unusedResult, funcInfo->yieldRegister);
     funcInfo->ReleaseTmpRegister(unusedResult);
 }
 
@@ -10454,7 +10526,7 @@ void EmitAwait(
             false,
             true));
 
-    EmitYieldResultAndResume(resultLocation, byteCodeGenerator, funcInfo);
+    EmitYieldIteratorResult(funcInfo->yieldRegister, resultLocation, byteCodeGenerator, funcInfo);
 }
 
 void EmitYield(
@@ -10485,7 +10557,7 @@ void EmitYield(
             false,
             true));
 
-    EmitYieldResultAndResume(resultLocation, byteCodeGenerator, funcInfo);
+    EmitYieldIteratorResult(funcInfo->yieldRegister, resultLocation, byteCodeGenerator, funcInfo);
 }
 
 void EmitYieldStar(
@@ -10493,16 +10565,24 @@ void EmitYieldStar(
     ByteCodeGenerator* byteCodeGenerator,
     FuncInfo* funcInfo)
 {
-    auto* writer = byteCodeGenerator->Writer();
-    Js::ByteCodeLabel loopEntrance = writer->DefineLabel();
-    Js::ByteCodeLabel continuePastLoop = writer->DefineLabel();
+    // TODO(zenparsing): The control flow should be cleaned up so that we
+    // aren't repeating code sequences (e.g. EmitIteratorNext and EmitReturnFromYield)
 
     bool isAsync = funcInfo->IsAsyncGenerator();
+    auto* writer = byteCodeGenerator->Writer();
+
+    Js::ByteCodeLabel loopEntrance = writer->DefineLabel();
+    Js::ByteCodeLabel continuePastLoop = writer->DefineLabel();
+    Js::RegSlot yieldStarReg = yieldStarNode->location;
+
+    // Initialize shouldReturn to false; this flag is used to indicate
+    // whether we should return or continue after the loop is complete
+    Js::RegSlot shouldReturnReg = funcInfo->AcquireTmpRegister();
+    writer->Reg2(Js::OpCode::Ld_A, shouldReturnReg, funcInfo->falseConstantRegister);
+
+    // Evaluate operand and get the inner iterator
     Js::RegSlot iteratorLocation = funcInfo->AcquireTmpRegister();
-
-    // Evaluate operand and get an iterator
     Emit(yieldStarNode->pnode1, byteCodeGenerator, funcInfo, false);
-
     EmitGetIterator(
         iteratorLocation,
         yieldStarNode->pnode1->location,
@@ -10512,8 +10592,7 @@ void EmitYieldStar(
 
     funcInfo->ReleaseLoc(yieldStarNode->pnode1);
 
-    // Call the iterator's next method
-    Js::RegSlot yieldStarReg = yieldStarNode->location;
+    // Call the next method of iterator to obtain the first result
     EmitIteratorNext(
         yieldStarReg,
         iteratorLocation, 
@@ -10521,43 +10600,155 @@ void EmitYieldStar(
         byteCodeGenerator,
         funcInfo);
 
-    // Loop start
+    // Begin loop
     uint loopId = writer->EnterLoop(loopEntrance);
 
-    // Since a yield* doesn't have a user defined body, we cannot return from this loop
-    // which means we don't need to support EmitJumpCleanup() and there do not need to
-    // remember the loopId like the loop statements do
+    // TODO(zenparsing): User defined loops are profiled, and when we branch
+    // out of the loop early, we do something like the following:
+    // writer->Unsigned1(Js::OpCode::ProfiledLoopEnd, loopId)
+    // Should we do similar for returns in this loop?
 
-    // If this is an async generator then await the yielded value
+    // If this is an async generator await the yielded value
     if (isAsync)
-    {
         EmitAwait(yieldStarReg, yieldStarReg, byteCodeGenerator, funcInfo);
-        // TODO(zenparsing): This should be taken care of by EmitIteratorComplete
-        /*
-        Js::ByteCodeLabel skipThrow = writer->DefineLabel();
-        writer->BrReg1(Js::OpCode::BrOnObject_A, skipThrow, iteratorLocation);
-        writer->W1(Js::OpCode::RuntimeTypeError, SCODE_CODE(JSERR_NeedObject));
-        writer->MarkLabel(skipThrow);
-        */
-    }
+
+    // TODO(zenparsing): This is going to duplicate the bytecode generated
+    // by the call to EmitIteratorNext
+
+    // Throw if the result is not an Object
+    Js::ByteCodeLabel resultIsObject = writer->DefineLabel();
+    writer->BrReg1(Js::OpCode::BrOnObject_A, resultIsObject, yieldStarReg);
+    writer->W1(Js::OpCode::RuntimeTypeError, SCODE_CODE(JSERR_NeedObject));
+    writer->MarkLabel(resultIsObject);
 
     // Get the iterator result's done property
-    Js::RegSlot doneLocation = funcInfo->AcquireTmpRegister();
-    EmitIteratorComplete(doneLocation, yieldStarReg, byteCodeGenerator, funcInfo);
+    Js::RegSlot doneReg = funcInfo->AcquireTmpRegister();
+    EmitIteratorComplete(doneReg, yieldStarReg, byteCodeGenerator, funcInfo);
 
     // Break out of loop if the done property is truthy
-    writer->BrReg1(Js::OpCode::BrTrue_A, continuePastLoop, doneLocation);
-    funcInfo->ReleaseTmpRegister(doneLocation);
+    writer->BrReg1(Js::OpCode::BrTrue_A, continuePastLoop, doneReg);
+    funcInfo->ReleaseTmpRegister(doneReg);
 
-    // Yield the iterator result object
-    writer->Reg2(Js::OpCode::Ld_A, funcInfo->yieldRegister, yieldStarReg);
+    // Reset shouldReturn to false
+    writer->Reg2(Js::OpCode::Ld_A, shouldReturnReg, funcInfo->falseConstantRegister);
 
-    EmitYieldResultAndResume(yieldStarReg, byteCodeGenerator, funcInfo);
+    Js::ByteCodeLabel resumeNormal = writer->DefineLabel();
+    Js::ByteCodeLabel resumeThrow = writer->DefineLabel();
+    Js::RegSlot resumeValueReg = funcInfo->AcquireTmpRegister();
 
-    // TODO(zenparsing): We need to wrap the resume yield in a try in order
-    // to pick up exceptions, and we also need to deal correctly with done
-    // results.
+    // Yield the next result to the caller
+    EmitYieldAndResume(
+        yieldStarReg,
+        resumeValueReg,
+        resumeNormal,
+        resumeThrow,
+        byteCodeGenerator,
+        funcInfo);
 
+    // Return case: set shouldReturn to true and attempt to call return
+    writer->Reg2(Js::OpCode::Ld_A, shouldReturnReg, funcInfo->trueConstantRegister);
+
+    Js::RegSlot returnMethodReg = funcInfo->AcquireTmpRegister();
+
+    // Load return method
+    writer->PatchableProperty(
+        Js::OpCode::LdFld,
+        returnMethodReg,
+        iteratorLocation,
+        funcInfo->FindOrAddInlineCacheId(
+            iteratorLocation,
+            Js::PropertyIds::return_,
+            false,
+            false));
+
+    // Branch to immediate return if return method is undefined or null
+    Js::ByteCodeLabel noReturnMethod = writer->DefineLabel();
+    writer->BrReg2(
+        Js::OpCode::BrEq_A,
+        noReturnMethod,
+        returnMethodReg,
+        funcInfo->undefinedConstantRegister);
+
+    funcInfo->ReleaseTmpRegister(returnMethodReg);
+
+    // TODO(zenparsing): It seems strange that we are doing two lookups
+    // on the "return" property, essentially. Why? We might not be able
+    // to do anything about this now.
+
+    // TODO(zenparsing): Attempting to call a non-function property will
+    // result in a generic "Function expected" error message. We should
+    // improve that more general problem.
+
+    // Invoke "return" method and loop
+    EmitInvoke(
+        yieldStarReg,
+        iteratorLocation,
+        Js::PropertyIds::return_,
+        byteCodeGenerator,
+        funcInfo,
+        resumeValueReg);
+
+    // TODO(zenparsing): Is branching to loopEntrance the right thing to do?
+    // Do we need another label (e.g. continueLabel)?
+    writer->Br(loopEntrance);
+
+    writer->MarkLabel(noReturnMethod);
+    EmitReturnFromYield(resumeValueReg, byteCodeGenerator, funcInfo);
+
+    // Throw case: attempt to call throw
+    writer->MarkLabel(resumeThrow);
+
+    Js::RegSlot throwMethodReg = funcInfo->AcquireTmpRegister();
+    Js::ByteCodeLabel noThrowMethod = writer->DefineLabel();
+
+    // Load throw method
+    writer->PatchableProperty(
+        Js::OpCode::LdFld,
+        throwMethodReg,
+        iteratorLocation,
+        funcInfo->FindOrAddInlineCacheId(
+            iteratorLocation,
+            Js::PropertyIds::throw_,
+            false,
+            false));
+
+    // Branch if method is undefined or null
+    writer->BrReg2(
+        Js::OpCode::BrEq_A,
+        noThrowMethod,
+        throwMethodReg,
+        funcInfo->undefinedConstantRegister);
+
+    funcInfo->ReleaseTmpRegister(throwMethodReg);
+
+    // Call throw method and loop
+    EmitInvoke(
+        yieldStarReg,
+        iteratorLocation,
+        Js::PropertyIds::throw_,
+        byteCodeGenerator,
+        funcInfo,
+        resumeValueReg);
+
+    writer->Br(loopEntrance);
+
+    // Iterator does not have a throw method; close the iterator and throw a TypeError
+    writer->MarkLabel(noThrowMethod);
+    EmitIteratorClose(iteratorLocation, byteCodeGenerator, funcInfo, isAsync);
+    byteCodeGenerator->Writer()->W1(
+        Js::OpCode::RuntimeTypeError,
+        SCODE_CODE(JSERR_YieldStarThrowMissing));
+
+    // Normal case: call next method of iterator
+    writer->MarkLabel(resumeNormal);
+    EmitIteratorNext(
+        yieldStarReg,
+        iteratorLocation,
+        resumeValueReg,
+        byteCodeGenerator,
+        funcInfo);
+
+    funcInfo->ReleaseTmpRegister(resumeValueReg);
     funcInfo->ReleaseTmpRegister(iteratorLocation);
 
     // Loop end
@@ -10565,9 +10756,18 @@ void EmitYieldStar(
     writer->MarkLabel(continuePastLoop);
     writer->ExitLoop(loopId);
 
-    // Put the iterator result's value in yieldStarReg. It will be used
-    // as the result value of the yield* operator expression.
+    // Load the iterator result value into place
     EmitIteratorValue(yieldStarReg, yieldStarReg, byteCodeGenerator, funcInfo);
+
+    Js::ByteCodeLabel normalCompletion = writer->DefineLabel();
+    writer->BrReg1(Js::OpCode::BrFalse_A, normalCompletion, shouldReturnReg);
+    funcInfo->ReleaseTmpRegister(shouldReturnReg);
+
+    // Return case: return the value from the generator
+    EmitReturnFromYield(yieldStarReg, byteCodeGenerator, funcInfo);
+
+    // Normal case
+    writer->MarkLabel(normalCompletion);
 }
 
 void TrackIntConstantsOnGlobalUserObject(ByteCodeGenerator *byteCodeGenerator, bool isSymGlobalAndSingleAssignment, Js::PropertyId propertyId)
@@ -11788,7 +11988,7 @@ void Emit(ParseNode* pnode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* func
         }
         if (pnodeReturn->grfnop & fnopCleanup)
         {
-            EmitJumpCleanup(pnodeReturn, nullptr, byteCodeGenerator, funcInfo);
+            byteCodeGenerator->EmitJumpCleanup(nullptr, funcInfo);
         }
 
         byteCodeGenerator->Writer()->Br(funcInfo->singleExit);
@@ -11867,7 +12067,7 @@ void Emit(ParseNode* pnode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* func
         byteCodeGenerator->StartStatement(pnodeJump);
         if (pnodeJump->grfnop & fnopCleanup)
         {
-            EmitJumpCleanup(pnodeJump, pnodeJump->pnodeTarget, byteCodeGenerator, funcInfo);
+            byteCodeGenerator->EmitJumpCleanup(pnodeJump->pnodeTarget, funcInfo);
         }
         byteCodeGenerator->Writer()->Br(pnodeJump->pnodeTarget->breakLabel);
         if (pnodeJump->emitLabels)
@@ -11884,7 +12084,7 @@ void Emit(ParseNode* pnode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* func
         byteCodeGenerator->StartStatement(pnodeJump);
         if (pnodeJump->grfnop & fnopCleanup)
         {
-            EmitJumpCleanup(pnodeJump, pnodeJump->pnodeTarget, byteCodeGenerator, funcInfo);
+            byteCodeGenerator->EmitJumpCleanup(pnodeJump->pnodeTarget, funcInfo);
         }
         byteCodeGenerator->Writer()->Br(pnodeJump->pnodeTarget->continueLabel);
         byteCodeGenerator->EndStatement(pnodeJump);
@@ -11983,7 +12183,10 @@ void Emit(ParseNode* pnode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* func
             byteCodeGenerator->tryScopeRecordsList.LinkToEnd(&tryRecForTry);
         }
 
+        byteCodeGenerator->PushJumpCleanup(JumpCleanupInfo { pnodeTry });
         Emit(pnodeTry->pnodeBody, byteCodeGenerator, funcInfo, fReturnValue);
+        byteCodeGenerator->PopJumpCleanup();
+
         funcInfo->ReleaseLoc(pnodeTry->pnodeBody);
 
         if (funcInfo->byteCodeFunction->IsCoroutine())
@@ -12114,6 +12317,8 @@ void Emit(ParseNode* pnode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* func
                 byteCodeGenerator->tryScopeRecordsList.LinkToEnd(&tryRecForCatch);
             }
 
+            byteCodeGenerator->PushJumpCleanup(JumpCleanupInfo { pnodeCatch });
+
             EmitAssignment(nullptr, pnode1, location, byteCodeGenerator, funcInfo);
             byteCodeGenerator->EndStatement(pnodeCatch);
         }
@@ -12138,6 +12343,8 @@ void Emit(ParseNode* pnode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* func
             {
                 byteCodeGenerator->tryScopeRecordsList.LinkToEnd(&tryRecForCatch);
             }
+
+            byteCodeGenerator->PushJumpCleanup(JumpCleanupInfo { pnodeCatch });
         }
 
         Emit(pnodeCatch->pnodeBody, byteCodeGenerator, funcInfo, fReturnValue);
@@ -12146,6 +12353,8 @@ void Emit(ParseNode* pnode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* func
         {
             byteCodeGenerator->tryScopeRecordsList.UnlinkFromEnd();
         }
+
+        byteCodeGenerator->PopJumpCleanup();
 
         byteCodeGenerator->PopScope();
         byteCodeGenerator->RecordEndScopeObject(pnodeTryCatch);
@@ -12199,6 +12408,8 @@ void Emit(ParseNode* pnode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* func
             byteCodeGenerator->Writer()->Br(Js::OpCode::TryFinally, finallyLabel);
         }
 
+        byteCodeGenerator->PushJumpCleanup(JumpCleanupInfo { pnodeTry });
+
         // Increasing the stack as we will be storing the additional values when we enter try..finally.
         funcInfo->StartRecordingOutArgs(1);
 
@@ -12209,6 +12420,8 @@ void Emit(ParseNode* pnode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* func
         {
             byteCodeGenerator->tryScopeRecordsList.UnlinkFromEnd();
         }
+
+        byteCodeGenerator->PopJumpCleanup();
 
         byteCodeGenerator->Writer()->Empty(Js::OpCode::Leave);
         byteCodeGenerator->Writer()->RecordCrossFrameEntryExitRecord(false);
@@ -12228,6 +12441,8 @@ void Emit(ParseNode* pnode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* func
             byteCodeGenerator->tryScopeRecordsList.LinkToEnd(&tryRecForFinally);
         }
 
+        byteCodeGenerator->PushJumpCleanup(JumpCleanupInfo { pnodeFinally });
+
         Emit(pnodeFinally->pnodeBody, byteCodeGenerator, funcInfo, fReturnValue);
         funcInfo->ReleaseLoc(pnodeFinally->pnodeBody);
 
@@ -12237,6 +12452,8 @@ void Emit(ParseNode* pnode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* func
             funcInfo->ReleaseTmpRegister(regOffset);
             funcInfo->ReleaseTmpRegister(regException);
         }
+
+        byteCodeGenerator->PopJumpCleanup();
 
         funcInfo->EndRecordingOutArgs(1);
 

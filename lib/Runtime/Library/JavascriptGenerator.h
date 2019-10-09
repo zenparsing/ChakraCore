@@ -14,9 +14,6 @@ enum class ResumeYieldKind
     Return
 };
 
-// Helper struct used to communicate to a yield point whether it was resumed via next(),
-// return(), or throw() and provide the data necessary for the corresponding action taken
-// (see OP_ResumeYield) `data` stores the value that was passed in as parameter to .next()
 struct ResumeYieldData
 {
     ScriptContext* scriptContext;
@@ -89,20 +86,23 @@ public:
         Arguments& args,
         ScriptFunction* scriptFunction);
 
-    static JavascriptGenerator* New(
-        Recycler* recycler,
-        DynamicType* generatorType,
-        Arguments &args,
-        Js::JavascriptGenerator::GeneratorState generatorState);
-
+    bool IsSuspendedStart() const { return this->state == GeneratorState::SuspendedStart; }
     bool IsExecuting() const { return this->state == GeneratorState::Executing; }
     bool IsSuspended() const { return this->state == GeneratorState::Suspended; }
     bool IsCompleted() const { return this->state == GeneratorState::Completed; }
 
-    bool IsSuspendedStart() const
+    void SetSuspendedStart()
     {
-        return this->state == GeneratorState::SuspendedStart
-            || (this->state == GeneratorState::Suspended && this->frame == nullptr);
+        Assert(
+            this->state == GeneratorState::SuspendedStart || 
+            this->state == GeneratorState::Suspended);
+        this->state = GeneratorState::SuspendedStart;
+    }
+
+    void SetCompleted()
+    {
+        Assert(this->state != GeneratorState::Executing);
+        this->SetState(GeneratorState::Completed);
     }
 
     InterpreterStackFrame* GetFrame() const { return frame; }
@@ -129,6 +129,12 @@ public:
     static Var EntryThrow(RecyclableObject* function, CallInfo callInfo, ...);
 
 #if ENABLE_TTD
+    static JavascriptGenerator* New(
+        Recycler* recycler,
+        DynamicType* generatorType,
+        Arguments &args,
+        Js::JavascriptGenerator::GeneratorState generatorState);
+
     virtual void MarkVisitKindSpecificPtrs(TTD::SnapshotExtractor* extractor) override;
     virtual TTD::NSSnapObjects::SnapObjectType GetSnapTag_TTD() const override;
     virtual void ExtractSnapObjectDataInto(TTD::NSSnapObjects::SnapObject* objData, TTD::SlabAllocator& alloc) override;

@@ -81,14 +81,7 @@ public:
     void ResumeCoroutine(Var value, ResumeYieldKind resumeKind);
     void ResolveNext(Var value);
     void RejectNext(Var reason);
-    void UnwrapAndResolveNext(Var value);
-    void UnwrapAndResumeCoroutine(Var value);
-    void UnwrapReturnAndResumeCoroutine(Var value);
-
-    void RegisterAwaitCallbacks(
-        Var value,
-        JavascriptMethod onFulfilled,
-        JavascriptMethod onRejected);
+    void UnwrapValue(Var value, PendingState pendingState);
 
     class EntryInfo
     {

@@ -123,6 +123,8 @@ using namespace Js;
         }
         END_SAFE_REENTRANT_CALL
 
+        generator->SetSuspendedStart();
+
         return generator;
     }
 

@@ -9,21 +9,51 @@ const int32 AstBytecodeRatioEstimate = 5;
 #endif
 
 
-enum DynamicLoadKind {
+enum DynamicLoadKind
+{
     Invalid,
     Local,
     Env,
     LocalWith,
     EnvWith
 };
-struct DynamicLoadRecord {
+
+struct DynamicLoadRecord
+{
     DynamicLoadRecord();
     DynamicLoadKind kind;
     Js::ByteCodeLabel label;
-    union {
+    union
+    {
         uint32 index;
         Js::RegSlot instance;
     };
+};
+
+struct JumpCleanupInfo
+{
+    ParseNode* node;
+
+    // Used for loop nodes
+    uint loopId;
+
+    // Used for try and finally nodes
+    Js::OpCode op;
+    Js::ByteCodeLabel label;
+    Js::RegSlot regSlot1;
+    Js::RegSlot regSlot2;
+
+    JumpCleanupInfo(
+        ParseNode* node,
+        uint loopId = 0,
+        Js::OpCode op = Js::OpCode::NOP,
+        Js::RegSlot regSlot1 = REG_NONE,
+        Js::RegSlot regSlot2 = REG_NONE) :
+            node(node),
+            loopId(loopId),
+            op(op),
+            regSlot1(regSlot1),
+            regSlot2(regSlot2) {}
 };
 
 class ByteCodeGenerator
@@ -44,6 +74,7 @@ private:
     Js::ParseableFunctionInfo * pRootFunc;
 
     SList<FuncInfo*> * funcInfosToFinalize;
+    SList<JumpCleanupInfo>* jumpCleanupList;
 
     int32 maxAstSize;
     uint16 envDepth;
@@ -297,7 +328,7 @@ public:
     Symbol *AddSymbolToFunctionScope(const char16 *key, int keyLength, ParseNode *varDecl, SymbolType symbolType);
     void FuncEscapes(Scope *scope);
     void EmitTopLevelStatement(ParseNode *stmt, FuncInfo *funcInfo, BOOL fReturnValue);
-    void EmitInvertedLoop(ParseNodeLoop* outerLoop,ParseNodeFor* invertedLoop,FuncInfo* funcInfo);
+    void EmitInvertedLoop(ParseNodeStmt* outerLoop,ParseNodeFor* invertedLoop,FuncInfo* funcInfo);
     void DefineFunctions(FuncInfo *funcInfoParent);
     Js::RegSlot DefineOneFunction(ParseNodeFnc *pnodeFnc, FuncInfo *funcInfoParent, bool generateAssignment=true, Js::RegSlot regEnv = Js::Constants::NoRegister, Js::RegSlot frameDisplayTemp = Js::Constants::NoRegister);
     void DefineCachedFunctions(FuncInfo *funcInfoParent);
@@ -442,6 +473,32 @@ public:
     Js::OpCode GetLdSlotOp(Scope *scope, int envIndex, Js::RegSlot scopeLocation, FuncInfo *funcInfo);
     Js::OpCode GetInitFldOp(Scope *scope, Js::RegSlot scopeLocation, FuncInfo *funcInfo, bool letDecl = false);
 
+    void PushJumpCleanup(const JumpCleanupInfo& info) { this->jumpCleanupList->Push(info); }
+    void PopJumpCleanup() { this->jumpCleanupList->Pop(); }
+    void EmitJumpCleanup(ParseNode* target, FuncInfo* funcInfo);
+    
+    void PushJumpCleanupForLoop(ParseNode* node, uint loopId)
+    {
+        JumpCleanupInfo info {node};
+        info.loopId = loopId;
+        this->jumpCleanupList->Push(info);
+    }
+
+    void PushJumpCleanupForTry(
+        ParseNode* node,
+        Js::OpCode op = Js::OpCode::NOP,
+        Js::ByteCodeLabel label = 0,
+        Js::RegSlot regSlot1 = REG_NONE,
+        Js::RegSlot regSlot2 = REG_NONE)
+    {
+        JumpCleanupInfo info {node};
+        info.op = op;
+        info.label = label;
+        info.regSlot1 = regSlot1;
+        info.regSlot2 = regSlot2;
+        this->jumpCleanupList->Push(info);
+    }
+
 private:
     bool NeedCheckBlockVar(Symbol* sym, Scope* scope, FuncInfo* funcInfo) const;
 
@@ -457,7 +514,8 @@ template<class Fn> void ByteCodeGenerator::IterateBlockScopedVariables(ParseNode
     }
 }
 
-struct ApplyCheck {
+struct ApplyCheck
+{
     bool matches;
     bool insideApplyCall;
     bool sawApply;

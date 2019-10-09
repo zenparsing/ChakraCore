@@ -209,12 +209,12 @@ void JavascriptAsyncGenerator::ResumeNext()
     if (next->kind != ResumeYieldKind::Normal)
     {
         if (IsSuspendedStart())
-            SetState(GeneratorState::Completed);
+            SetCompleted();
 
         if (next->kind == ResumeYieldKind::Return)
         {
-            if (IsCompleted()) UnwrapAndResolveNext(next->data);
-            else UnwrapReturnAndResumeCoroutine(next->data);
+            if (IsCompleted()) UnwrapValue(next->data, PendingState::Yield);
+            else UnwrapValue(next->data, PendingState::AwaitReturn);
         }
         else
         {
@@ -258,11 +258,11 @@ void JavascriptAsyncGenerator::ResumeCoroutine(Var value, ResumeYieldKind resume
     {
         // If the result object has an _internalSymbolIsAwait property, then
         // we are processing an await expression
-        UnwrapAndResumeCoroutine(resultValue);
+        UnwrapValue(resultValue, PendingState::Await);
     }
     else
     {
-        UnwrapAndResolveNext(resultValue);
+        UnwrapValue(resultValue, PendingState::Yield);
     }
 }
 
@@ -277,42 +277,29 @@ void JavascriptAsyncGenerator::ResolveNext(Var value)
 
 void JavascriptAsyncGenerator::RejectNext(Var reason)
 {
+    SetCompleted();
     ShiftRequest()->promise->Reject(reason, GetScriptContext());
     ResumeNext();
 }
 
-void JavascriptAsyncGenerator::RegisterAwaitCallbacks(
-    Var value,
-    JavascriptMethod fulfilledEntryPoint,
-    JavascriptMethod rejectedEntryPoint)
+void JavascriptAsyncGenerator::UnwrapValue(Var value, PendingState pendingState)
 {
+    this->pendingState = pendingState;
+
     auto* scriptContext = GetScriptContext();
     auto* library = scriptContext->GetLibrary();
     auto* promise = JavascriptPromise::InternalPromiseResolve(value, scriptContext);
     auto* unused = JavascriptPromise::UnusedPromiseCapability(scriptContext);
 
-    auto* onFulfilled = library->CreateAsyncGeneratorCallbackFunction(fulfilledEntryPoint, this);
-    auto* onRejected = library->CreateAsyncGeneratorCallbackFunction(rejectedEntryPoint, this);
+    auto* onFulfilled = library->CreateAsyncGeneratorCallbackFunction(
+        EntryAwaitFulfilledCallback,
+        this);
+
+    auto* onRejected = library->CreateAsyncGeneratorCallbackFunction(
+        EntryAwaitRejectedCallback,
+        this);
 
     JavascriptPromise::PerformPromiseThen(promise, unused, onFulfilled, onRejected, scriptContext);
-}
-
-void JavascriptAsyncGenerator::UnwrapAndResolveNext(Var value)
-{
-    this->pendingState = PendingState::Yield;
-    RegisterAwaitCallbacks(value, EntryAwaitFulfilledCallback, EntryAwaitRejectedCallback);
-}
-
-void JavascriptAsyncGenerator::UnwrapAndResumeCoroutine(Var value)
-{
-    this->pendingState = PendingState::Await;
-    RegisterAwaitCallbacks(value, EntryAwaitFulfilledCallback, EntryAwaitRejectedCallback);
-}
-
-void JavascriptAsyncGenerator::UnwrapReturnAndResumeCoroutine(Var value)
-{
-    this->pendingState = PendingState::AwaitReturn;
-    RegisterAwaitCallbacks(value, EntryAwaitFulfilledCallback, EntryAwaitRejectedCallback);
 }
 
 template<>
