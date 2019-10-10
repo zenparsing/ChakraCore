@@ -107,23 +107,32 @@ using namespace Js;
 
         Assert(!(callInfo.Flags & CallFlags_New));
 
-        ScriptContext* scriptContext = function->GetScriptContext();
-        JavascriptGeneratorFunction* generatorFunction = VarTo<JavascriptGeneratorFunction>(function);
+        auto* scriptContext = function->GetScriptContext();
+        auto* library = scriptContext->GetLibrary();
+        auto* generatorFunction = VarTo<JavascriptGeneratorFunction>(function);
 
-        DynamicObject* prototype = scriptContext->GetLibrary()->CreateGeneratorConstructorPrototypeObject();
-        JavascriptGenerator* generator = scriptContext->GetLibrary()->CreateGenerator(args, generatorFunction->scriptFunction, prototype);
+        DynamicObject* prototype = library->CreateGeneratorConstructorPrototypeObject();
 
-        // Set the prototype from constructor
-        JavascriptOperators::OrdinaryCreateFromConstructor(function, generator, prototype, scriptContext);
+        JavascriptGenerator* generator = library->CreateGenerator(
+            args,
+            generatorFunction->scriptFunction,
+            prototype);
 
         // Call a next on the generator to execute till the beginning of the body
         BEGIN_SAFE_REENTRANT_CALL(scriptContext->GetThreadContext())
         {
-            CALL_ENTRYPOINT(scriptContext->GetThreadContext(), generator->EntryNext, function, CallInfo(CallFlags_Value, 1), generator);
+            generator->CallGenerator(library->GetUndefined(), ResumeYieldKind::Normal);
         }
         END_SAFE_REENTRANT_CALL
 
         generator->SetSuspendedStart();
+
+        // Set the prototype from constructor
+        JavascriptOperators::OrdinaryCreateFromConstructor(
+            function,
+            generator,
+            prototype,
+            scriptContext);
 
         return generator;
     }

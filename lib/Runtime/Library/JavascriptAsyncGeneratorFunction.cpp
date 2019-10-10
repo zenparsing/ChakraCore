@@ -53,26 +53,21 @@ Var JavascriptAsyncGeneratorFunction::EntryAsyncGeneratorFunctionImplementation(
     auto* scriptFn = asyncGeneratorFn->GetGeneratorVirtualScriptFunction();
     auto* generator = library->CreateAsyncGenerator(args, scriptFn, prototype);
 
+    // Run the generator to execute until the beginning of the body
+    BEGIN_SAFE_REENTRANT_CALL(scriptContext->GetThreadContext())
+    {
+        generator->CallGenerator(library->GetUndefined(), ResumeYieldKind::Normal);
+    }
+    END_SAFE_REENTRANT_CALL
+
+    generator->SetSuspendedStart();
+
     // Set the prototype from constructor
     JavascriptOperators::OrdinaryCreateFromConstructor(
         function,
         generator,
         prototype,
         scriptContext);
-
-    // Call next on the generator to execute until the beginning of the body
-    BEGIN_SAFE_REENTRANT_CALL(scriptContext->GetThreadContext())
-    {
-        CALL_ENTRYPOINT(
-            scriptContext->GetThreadContext(),
-            generator->EntryNext,
-            asyncGeneratorFn,
-            CallInfo(CallFlags_Value, 1),
-            generator);
-    }
-    END_SAFE_REENTRANT_CALL
-
-    generator->SetSuspendedStart();
 
     return generator;
 }

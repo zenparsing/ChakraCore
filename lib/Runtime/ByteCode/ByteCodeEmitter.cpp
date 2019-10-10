@@ -11908,13 +11908,17 @@ void Emit(ParseNode* pnode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* func
         ParseNodeReturn * pnodeReturn = pnode->AsParseNodeReturn();
         byteCodeGenerator->StartStatement(pnodeReturn);
         if (pnodeReturn->pnodeExpr != nullptr)
-            {
+        {
             if (pnodeReturn->pnodeExpr->location == Js::Constants::NoRegister)
             {
                 // No need to burn a register for the return value. If we need a temp, use R0 directly.
                 pnodeReturn->pnodeExpr->location = ByteCodeGenerator::ReturnRegister;
             }
             Emit(pnodeReturn->pnodeExpr, byteCodeGenerator, funcInfo, fReturnValue);
+            if (funcInfo->IsAsyncGenerator())
+            {
+                EmitAwait(pnodeReturn->pnodeExpr, pnodeReturn->pnodeExpr, byteCodeGenerator, funcInfo);
+            }
             if (pnodeReturn->pnodeExpr->location != ByteCodeGenerator::ReturnRegister)
             {
                 byteCodeGenerator->Writer()->Reg2(Js::OpCode::Ld_A, ByteCodeGenerator::ReturnRegister, pnodeReturn->pnodeExpr->location);
