@@ -32,28 +32,15 @@ struct DynamicLoadRecord
 
 struct JumpCleanupInfo
 {
-    ParseNode* node;
-
     // Used for loop nodes
+    ParseNode* loopNode;
     uint loopId;
 
     // Used for try and finally nodes
-    Js::OpCode op;
+    Js::OpCode tryOp;
     Js::ByteCodeLabel label;
     Js::RegSlot regSlot1;
     Js::RegSlot regSlot2;
-
-    JumpCleanupInfo(
-        ParseNode* node,
-        uint loopId = 0,
-        Js::OpCode op = Js::OpCode::NOP,
-        Js::RegSlot regSlot1 = REG_NONE,
-        Js::RegSlot regSlot2 = REG_NONE) :
-            node(node),
-            loopId(loopId),
-            op(op),
-            regSlot1(regSlot1),
-            regSlot2(regSlot2) {}
 };
 
 class ByteCodeGenerator
@@ -74,7 +61,9 @@ private:
     Js::ParseableFunctionInfo * pRootFunc;
 
     SList<FuncInfo*> * funcInfosToFinalize;
-    SList<JumpCleanupInfo>* jumpCleanupList;
+
+    using JumpCleanupList = DList<JumpCleanupInfo, ArenaAllocator>;
+    JumpCleanupList* jumpCleanupList;
 
     int32 maxAstSize;
     uint16 envDepth;
@@ -472,32 +461,31 @@ public:
     Js::OpCode GetStSlotOp(Scope *scope, int envIndex, Js::RegSlot scopeLocation, bool chkBlockVar, FuncInfo *funcInfo);
     Js::OpCode GetLdSlotOp(Scope *scope, int envIndex, Js::RegSlot scopeLocation, FuncInfo *funcInfo);
     Js::OpCode GetInitFldOp(Scope *scope, Js::RegSlot scopeLocation, FuncInfo *funcInfo, bool letDecl = false);
-
-    void PushJumpCleanup(const JumpCleanupInfo& info) { this->jumpCleanupList->Push(info); }
-    void PopJumpCleanup() { this->jumpCleanupList->Pop(); }
-    void EmitJumpCleanup(ParseNode* target, FuncInfo* funcInfo);
     
-    void PushJumpCleanupForLoop(ParseNode* node, uint loopId)
+    void PushJumpCleanupForLoop(ParseNode* loopNode, uint loopId)
     {
-        JumpCleanupInfo info {node};
-        info.loopId = loopId;
-        this->jumpCleanupList->Push(info);
+        this->jumpCleanupList->Prepend({
+            loopNode,
+            loopId,
+            Js::OpCode::Nop,
+            0,
+            Js::Constants::NoRegister,
+            Js::Constants::NoRegister
+        });
     }
 
     void PushJumpCleanupForTry(
-        ParseNode* node,
-        Js::OpCode op = Js::OpCode::NOP,
+        Js::OpCode tryOp,
         Js::ByteCodeLabel label = 0,
-        Js::RegSlot regSlot1 = REG_NONE,
-        Js::RegSlot regSlot2 = REG_NONE)
+        Js::RegSlot regSlot1 = Js::Constants::NoRegister,
+        Js::RegSlot regSlot2 = Js::Constants::NoRegister)
     {
-        JumpCleanupInfo info {node};
-        info.op = op;
-        info.label = label;
-        info.regSlot1 = regSlot1;
-        info.regSlot2 = regSlot2;
-        this->jumpCleanupList->Push(info);
+        this->jumpCleanupList->Prepend({nullptr, 0, tryOp, label, regSlot1, regSlot2});
     }
+
+    void PopJumpCleanup() { this->jumpCleanupList->RemoveHead(); }
+    bool HasJumpCleanup() { return !this->jumpCleanupList->Empty(); }
+    void EmitJumpCleanup(ParseNode* target, FuncInfo* funcInfo);
 
 private:
     bool NeedCheckBlockVar(Symbol* sym, Scope* scope, FuncInfo* funcInfo) const;

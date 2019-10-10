@@ -2204,7 +2204,7 @@ void ByteCodeGenerator::Begin(
     this->funcInfosToFinalize = nullptr;
 
     this->funcInfoStack = Anew(alloc, SList<FuncInfo*>, alloc);
-    this->jumpCleanupList = Anew(alloc, SList<JumpCleanupInfo>, alloc);
+    this->jumpCleanupList = Anew(alloc, JumpCleanupList, alloc);
 }
 
 HRESULT GenerateByteCode(__in ParseNodeProg *pnode, __in uint32 grfscr, __in Js::ScriptContext* scriptContext, __inout Js::ParseableFunctionInfo ** ppRootFunc,

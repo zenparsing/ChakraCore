@@ -6601,7 +6601,7 @@ struct ByteCodeGenerator::TryScopeRecord : public JsUtil::DoublyLinkedListElemen
 //    do nothing
 // }
 
-void EmitTryCatchAroundClose(
+void EmitTryCatchAroundIteratorClose(
     Js::RegSlot iteratorLocation,
     Js::ByteCodeLabel endLabel,
     ByteCodeGenerator *byteCodeGenerator,
@@ -6611,21 +6611,15 @@ void EmitTryCatchAroundClose(
     Js::ByteCodeLabel catchLabel = byteCodeGenerator->Writer()->DefineLabel();
     byteCodeGenerator->Writer()->Br(Js::OpCode::TryCatch, catchLabel);
 
-    // TryScopeRecord is only needed here if in a for-await loop as it will await the return functionr result
-    // otherwise there is no yield here
-
-    ByteCodeGenerator::TryScopeRecord tryRecForCatch(Js::OpCode::ResumeCatch, catchLabel);
+    // Jump cleanup is only needed in a for-await loop since it will await the
+    // result of the call to the return method. Otherwise there can be no jump.
     if (isAsync)
-    {
-        byteCodeGenerator->tryScopeRecordsList.LinkToEnd(&tryRecForCatch);
-    }
+        byteCodeGenerator->PushJumpCleanupForTry(Js::OpCode::TryCatch, catchLabel);
 
     EmitIteratorClose(iteratorLocation, byteCodeGenerator, funcInfo, isAsync);
 
     if (isAsync)
-    {
-        byteCodeGenerator->tryScopeRecordsList.UnlinkFromEnd();
-    }
+        byteCodeGenerator->PopJumpCleanup();
 
     byteCodeGenerator->Writer()->Empty(Js::OpCode::Leave);
     byteCodeGenerator->Writer()->Br(endLabel);
@@ -6644,12 +6638,13 @@ void EmitTryCatchAroundClose(
 //          CallReturnWhichWrappedByTryCatch
 //      throw e;
 // }
-void EmitTopLevelCatch(Js::ByteCodeLabel catchLabel,
+void EmitIteratorTopLevelCatch(
+    Js::ByteCodeLabel catchLabel,
     Js::RegSlot iteratorLocation,
     Js::RegSlot shouldCallReturnLocation,
     Js::RegSlot shouldCallReturnLocationFinally,
-    ByteCodeGenerator *byteCodeGenerator,
-    FuncInfo *funcInfo,
+    ByteCodeGenerator* byteCodeGenerator,
+    FuncInfo* funcInfo,
     bool isAsync)
 {
     Js::ByteCodeLabel afterCatchBlockLabel = byteCodeGenerator->Writer()->DefineLabel();
@@ -6660,30 +6655,22 @@ void EmitTopLevelCatch(Js::ByteCodeLabel catchLabel,
     Js::RegSlot catchParamLocation = funcInfo->AcquireTmpRegister();
     byteCodeGenerator->Writer()->Reg1(Js::OpCode::Catch, catchParamLocation);
 
-    ByteCodeGenerator::TryScopeRecord tryRecForCatch(Js::OpCode::ResumeCatch, catchLabel);
-    if (funcInfo->byteCodeFunction->IsCoroutine())
-    {
-        byteCodeGenerator->tryScopeRecordsList.LinkToEnd(&tryRecForCatch);
-    }
+    byteCodeGenerator->PushJumpCleanupForTry(Js::OpCode::ResumeCatch);
 
     Js::ByteCodeLabel skipCallCloseLabel = byteCodeGenerator->Writer()->DefineLabel();
 
     byteCodeGenerator->Writer()->BrReg1(Js::OpCode::BrFalse_A, skipCallCloseLabel, shouldCallReturnLocation);
     byteCodeGenerator->Writer()->Reg1(Js::OpCode::LdFalse_ReuseLoc, shouldCallReturnLocationFinally);
-    EmitTryCatchAroundClose(iteratorLocation, skipCallCloseLabel, byteCodeGenerator, funcInfo, isAsync);
+
+    EmitTryCatchAroundIteratorClose(iteratorLocation, skipCallCloseLabel, byteCodeGenerator, funcInfo, isAsync);
 
     byteCodeGenerator->Writer()->MarkLabel(skipCallCloseLabel);
 
-    // Rethrow the exception.
+    // Rethrow the exception
     byteCodeGenerator->Writer()->Reg1(Js::OpCode::Throw, catchParamLocation);
-
     funcInfo->ReleaseTmpRegister(catchParamLocation);
 
-    if (funcInfo->byteCodeFunction->IsCoroutine())
-    {
-        byteCodeGenerator->tryScopeRecordsList.UnlinkFromEnd();
-    }
-
+    byteCodeGenerator->PopJumpCleanup();
     byteCodeGenerator->Writer()->Empty(Js::OpCode::Leave);
     byteCodeGenerator->Writer()->MarkLabel(afterCatchBlockLabel);
 }
@@ -6694,13 +6681,14 @@ void EmitTopLevelCatch(Js::ByteCodeLabel catchLabel,
 //          CallReturn
 // }
 
-void EmitTopLevelFinally(Js::ByteCodeLabel finallyLabel,
+void EmitIteratorTopLevelFinally(
+    Js::ByteCodeLabel finallyLabel,
     Js::RegSlot iteratorLocation,
     Js::RegSlot shouldCallReturnLocation,
     Js::RegSlot yieldExceptionLocation,
     Js::RegSlot yieldOffsetLocation,
-    ByteCodeGenerator *byteCodeGenerator,
-    FuncInfo *funcInfo,
+    ByteCodeGenerator* byteCodeGenerator,
+    FuncInfo* funcInfo,
     bool isAsync)
 {
     bool isCoroutine = funcInfo->byteCodeFunction->IsCoroutine();
@@ -6715,11 +6703,11 @@ void EmitTopLevelFinally(Js::ByteCodeLabel finallyLabel,
     byteCodeGenerator->Writer()->MarkLabel(finallyLabel);
     byteCodeGenerator->Writer()->Empty(Js::OpCode::Finally);
 
-    ByteCodeGenerator::TryScopeRecord tryRecForFinally(Js::OpCode::ResumeFinally, finallyLabel, yieldExceptionLocation, yieldOffsetLocation);
-    if (isCoroutine)
-    {
-        byteCodeGenerator->tryScopeRecordsList.LinkToEnd(&tryRecForFinally);
-    }
+    byteCodeGenerator->PushJumpCleanupForTry(
+        Js::OpCode::ResumeFinally,
+        finallyLabel,
+        yieldExceptionLocation,
+        yieldOffsetLocation);
 
     Js::ByteCodeLabel skipCallCloseLabel = byteCodeGenerator->Writer()->DefineLabel();
 
@@ -6728,9 +6716,9 @@ void EmitTopLevelFinally(Js::ByteCodeLabel finallyLabel,
 
     byteCodeGenerator->Writer()->MarkLabel(skipCallCloseLabel);
 
+    byteCodeGenerator->PopJumpCleanup();
     if (isCoroutine)
     {
-        byteCodeGenerator->tryScopeRecordsList.UnlinkFromEnd();
         funcInfo->ReleaseTmpRegister(yieldOffsetLocation);
         funcInfo->ReleaseTmpRegister(yieldExceptionLocation);
     }
@@ -6740,25 +6728,22 @@ void EmitTopLevelFinally(Js::ByteCodeLabel finallyLabel,
     byteCodeGenerator->Writer()->MarkLabel(afterFinallyBlockLabel);
 }
 
-void EmitCatchAndFinallyBlocks(Js::ByteCodeLabel catchLabel,
+void EmitCatchAndFinallyBlocks(
+    Js::ByteCodeLabel catchLabel,
     Js::ByteCodeLabel finallyLabel,
     Js::RegSlot iteratorLocation,
     Js::RegSlot shouldCallReturnFunctionLocation,
     Js::RegSlot shouldCallReturnFunctionLocationFinally,
     Js::RegSlot yieldExceptionLocation,
     Js::RegSlot yieldOffsetLocation,
-    ByteCodeGenerator *byteCodeGenerator,
-    FuncInfo *funcInfo,
-    bool isAsync = false
-    )
+    ByteCodeGenerator* byteCodeGenerator,
+    FuncInfo* funcInfo,
+    bool isAsync = false)
 {
-    bool isCoroutine = funcInfo->byteCodeFunction->IsCoroutine();
-    if (isCoroutine)
-    {
-        byteCodeGenerator->tryScopeRecordsList.UnlinkFromEnd();
-    }
+    byteCodeGenerator->PopJumpCleanup();
 
-    EmitTopLevelCatch(catchLabel,
+    EmitIteratorTopLevelCatch(
+        catchLabel,
         iteratorLocation,
         shouldCallReturnFunctionLocation,
         shouldCallReturnFunctionLocationFinally,
@@ -6766,12 +6751,10 @@ void EmitCatchAndFinallyBlocks(Js::ByteCodeLabel catchLabel,
         funcInfo,
         isAsync);
 
-    if (isCoroutine)
-    {
-        byteCodeGenerator->tryScopeRecordsList.UnlinkFromEnd();
-    }
+    byteCodeGenerator->PopJumpCleanup();
 
-    EmitTopLevelFinally(finallyLabel,
+    EmitIteratorTopLevelFinally(
+        finallyLabel,
         iteratorLocation,
         shouldCallReturnFunctionLocationFinally,
         yieldExceptionLocation,
@@ -6835,27 +6818,23 @@ void EmitDestructuredArray(
     Js::ByteCodeLabel catchLabel = byteCodeGenerator->Writer()->DefineLabel();
     byteCodeGenerator->Writer()->RecordCrossFrameEntryExitRecord(true);
 
-    ByteCodeGenerator::TryScopeRecord tryRecForTryFinally(Js::OpCode::TryFinallyWithYield, finallyLabel);
-
     if (isCoroutine)
     {
         byteCodeGenerator->Writer()->BrReg2(Js::OpCode::TryFinallyWithYield, finallyLabel, regException, regOffset);
-        tryRecForTryFinally.reg1 = regException;
-        tryRecForTryFinally.reg2 = regOffset;
-        byteCodeGenerator->tryScopeRecordsList.LinkToEnd(&tryRecForTryFinally);
+        byteCodeGenerator->PushJumpCleanupForTry(
+            Js::OpCode::TryFinallyWithYield,
+            finallyLabel,
+            regException,
+            regOffset);
     }
     else
     {
         byteCodeGenerator->Writer()->Br(Js::OpCode::TryFinally, finallyLabel);
+        byteCodeGenerator->PushJumpCleanupForTry(Js::OpCode::TryFinally, finallyLabel);
     }
 
     byteCodeGenerator->Writer()->Br(Js::OpCode::TryCatch, catchLabel);
-
-    ByteCodeGenerator::TryScopeRecord tryRecForTry(Js::OpCode::TryCatch, catchLabel);
-    if (isCoroutine)
-    {
-        byteCodeGenerator->tryScopeRecordsList.LinkToEnd(&tryRecForTry);
-    }
+    byteCodeGenerator->PushJumpCleanupForTry(Js::OpCode::TryCatch, catchLabel);
 
     EmitDestructuredArrayCore(list,
         iteratorLocation,
@@ -9447,7 +9426,7 @@ void EmitLoop(
     Js::ByteCodeLabel continuePastLoop = byteCodeGenerator->Writer()->DefineLabel();
 
     uint loopId = byteCodeGenerator->Writer()->EnterLoop(loopEntrance);
-    byteCodeGenerator->PushJumpCleanup({loopNode, loopId});
+    byteCodeGenerator->PushJumpCleanupForLoop(loopNode, loopId);
 
     if (doWhile)
     {
@@ -9878,27 +9857,23 @@ void EmitForInOrForOf(ParseNodeForInOrForOf *loopNode, ByteCodeGenerator *byteCo
     byteCodeGenerator->Writer()->Reg1(Js::OpCode::LdFalse, shouldCallReturnFunctionLocation);
     byteCodeGenerator->Writer()->Reg1(Js::OpCode::LdFalse, shouldCallReturnFunctionLocationFinally);
 
-    ByteCodeGenerator::TryScopeRecord tryRecForTryFinally(Js::OpCode::TryFinallyWithYield, finallyLabel);
-
     if (isCoroutine)
     {
         byteCodeGenerator->Writer()->BrReg2(Js::OpCode::TryFinallyWithYield, finallyLabel, regException, regOffset);
-        tryRecForTryFinally.reg1 = regException;
-        tryRecForTryFinally.reg2 = regOffset;
-        byteCodeGenerator->tryScopeRecordsList.LinkToEnd(&tryRecForTryFinally);
+        byteCodeGenerator->PushJumpCleanupForTry(
+            Js::OpCode::TryFinallyWithYield,
+            finallyLabel,
+            regException,
+            regOffset);
     }
     else
     {
         byteCodeGenerator->Writer()->Br(Js::OpCode::TryFinally, finallyLabel);
+        byteCodeGenerator->PushJumpCleanupForTry(Js::OpCode::TryFinally, finallyLabel);
     }
 
     byteCodeGenerator->Writer()->Br(Js::OpCode::TryCatch, catchLabel);
-
-    ByteCodeGenerator::TryScopeRecord tryRecForTry(Js::OpCode::TryCatch, catchLabel);
-    if (isCoroutine)
-    {
-        byteCodeGenerator->tryScopeRecordsList.LinkToEnd(&tryRecForTry);
-    }
+    byteCodeGenerator->PushJumpCleanupForTry(Js::OpCode::TryCatch, catchLabel);
 
     byteCodeGenerator->EndStatement(loopNode);
 
@@ -9979,47 +9954,35 @@ void EmitArrayLiteral(ParseNode *pnode, ByteCodeGenerator *byteCodeGenerator, Fu
 
 void ByteCodeGenerator::EmitJumpCleanup(ParseNode* target, FuncInfo* funcInfo)
 {
-    for (auto iter = this->jumpCleanupList->GetIterator(); iter.Next();)
+    for (JumpCleanupList::Iterator iter(this->jumpCleanupList); iter.Next();)
     {
         const JumpCleanupInfo& info = iter.Data();
-        if (info.node == target)
-            break;
 
-        bool isLoop = false;
-
-        switch (info.node->nop)
+        if (info.loopNode)
         {
-            case knopTry:
-            case knopCatch:
-            case knopFinally:
-                // We insert OpCode::Leave when there is a 'return' inside try/catch/finally.
-                // This is for flow control and does not participate in identifying boundaries 
-                // of try/catch blocks, thus we shouldn't call RecordCrossFrameEntryExitRecord
-                // here.
-                this->Writer()->Empty(Js::OpCode::Leave);
+            if (info.loopNode == target)
                 break;
-
-            case knopForAwaitOf:
-            case knopForOf:
-                // The ForOf loop code is wrapped around try/catch/finally
-                this->Writer()->Empty(Js::OpCode::Leave);
-                this->Writer()->Empty(Js::OpCode::Leave);
-                isLoop = true;
-                break;
-
-            case knopWhile:
-            case knopDoWhile:
-            case knopFor:
-            case knopForIn:
-                isLoop = true;
-                break;
-        }
 
 #if ENABLE_PROFILE_INFO
-        if (isLoop && Js::DynamicProfileInfo::EnableImplicitCallFlags(funcInfo->GetParsedFunctionBody()))
-            this->Writer()->Unsigned1(Js::OpCode::ProfiledLoopEnd, info.loopId);
+            if (Js::DynamicProfileInfo::EnableImplicitCallFlags(funcInfo->GetParsedFunctionBody()))
+                this->Writer()->Unsigned1(Js::OpCode::ProfiledLoopEnd, info.loopId);
 #endif
+        }
+        else
+        {
+            Assert(
+                info.tryOp == Js::OpCode::TryCatch ||
+                info.tryOp == Js::OpCode::TryFinally ||
+                info.tryOp == Js::OpCode::TryFinallyWithYield ||
+                info.tryOp == Js::OpCode::ResumeCatch ||
+                info.tryOp == Js::OpCode::ResumeFinally);
 
+            // We insert OpCode::Leave when there is a 'return' inside try/catch/finally.
+            // This is for flow control and does not participate in identifying boundaries 
+            // of try/catch blocks, thus we shouldn't call RecordCrossFrameEntryExitRecord
+            // here.
+            this->Writer()->Empty(Js::OpCode::Leave);
+        }
     }
 }
 
@@ -10336,44 +10299,50 @@ void EmitAdd(ParseNode *pnode, ByteCodeGenerator *byteCodeGenerator, FuncInfo *f
 
 void ByteCodeGenerator::EmitLeaveOpCodesBeforeYield()
 {
-    for (TryScopeRecord* node = this->tryScopeRecordsList.Tail(); node != nullptr; node = node->Previous())
+    for (JumpCleanupList::Iterator iter(this->jumpCleanupList); iter.Next();)
     {
-        switch (node->op)
+        const JumpCleanupInfo& info = iter.Data();
+        switch (info.tryOp)
         {
-        case Js::OpCode::TryFinallyWithYield:
-            this->Writer()->Empty(Js::OpCode::LeaveNull);
-            break;
-        case Js::OpCode::TryCatch:
-        case Js::OpCode::ResumeFinally:
-        case Js::OpCode::ResumeCatch:
-            this->Writer()->Empty(Js::OpCode::Leave);
-            break;
-        default:
-            AssertMsg(false, "Unexpected OpCode before Yield in the Try-Catch-Finally cache for generator!");
-            break;
+            case Js::OpCode::TryFinallyWithYield:
+                this->Writer()->Empty(Js::OpCode::LeaveNull);
+                break;
+            case Js::OpCode::TryCatch:
+            case Js::OpCode::ResumeFinally:
+            case Js::OpCode::ResumeCatch:
+                this->Writer()->Empty(Js::OpCode::Leave);
+                break;
+            case Js::OpCode::Nop:
+                break;
+            default:
+                AssertMsg(false, "Unexpected OpCode in jumpCleanupList");
+                break;
         }
     }
 }
 
 void ByteCodeGenerator::EmitTryBlockHeadersAfterYield()
 {
-    for (TryScopeRecord* node = this->tryScopeRecordsList.Head(); node != nullptr; node = node->Next())
+    for (JumpCleanupList::Iterator iter(this->jumpCleanupList); iter.Prev();)
     {
-        switch (node->op)
+        const JumpCleanupInfo& info = iter.Data();
+        switch (info.tryOp)
         {
-        case Js::OpCode::TryCatch:
-            this->Writer()->Br(node->op, node->label);
-            break;
-        case Js::OpCode::TryFinallyWithYield:
-        case Js::OpCode::ResumeFinally:
-            this->Writer()->BrReg2(node->op, node->label, node->reg1, node->reg2);
-            break;
-        case Js::OpCode::ResumeCatch:
-            this->Writer()->Empty(node->op);
-            break;
-        default:
-            AssertMsg(false, "Unexpected OpCode after yield in the Try-Catch-Finally cache for generator!");
-            break;
+            case Js::OpCode::TryCatch:
+                this->Writer()->Br(info.tryOp, info.label);
+                break;
+            case Js::OpCode::TryFinallyWithYield:
+            case Js::OpCode::ResumeFinally:
+                this->Writer()->BrReg2(info.tryOp, info.label, info.regSlot1, info.regSlot2);
+                break;
+            case Js::OpCode::ResumeCatch:
+                this->Writer()->Empty(info.tryOp);
+                break;
+            case Js::OpCode::Nop:
+                break;
+            default:
+                AssertMsg(false, "Unexpected OpCode in jumpCleanupList");
+                break;
         }
     }
 }
@@ -10489,7 +10458,7 @@ void EmitStartupYield(ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo)
     // completion (the other types are handled in the generator logic), the
     // resume value is not observable to user code, and it cannot be contained
     // within a try scope.
-    Assert(byteCodeGenerator->tryScopeRecordsList.IsEmpty());
+    Assert(!byteCodeGenerator->HasJumpCleanup());
     auto* writer = byteCodeGenerator->Writer();
     Js::RegSlot unusedResult = funcInfo->AcquireTmpRegister();
     writer->Reg1(Js::OpCode::LdUndef, funcInfo->yieldRegister);
@@ -12177,22 +12146,11 @@ void Emit(ParseNode* pnode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* func
 
         byteCodeGenerator->Writer()->Br(Js::OpCode::TryCatch, catchLabel);
 
-        ByteCodeGenerator::TryScopeRecord tryRecForTry(Js::OpCode::TryCatch, catchLabel);
-        if (funcInfo->byteCodeFunction->IsCoroutine())
-        {
-            byteCodeGenerator->tryScopeRecordsList.LinkToEnd(&tryRecForTry);
-        }
-
-        byteCodeGenerator->PushJumpCleanup(JumpCleanupInfo { pnodeTry });
+        byteCodeGenerator->PushJumpCleanupForTry(Js::OpCode::TryCatch, catchLabel);
         Emit(pnodeTry->pnodeBody, byteCodeGenerator, funcInfo, fReturnValue);
         byteCodeGenerator->PopJumpCleanup();
 
         funcInfo->ReleaseLoc(pnodeTry->pnodeBody);
-
-        if (funcInfo->byteCodeFunction->IsCoroutine())
-        {
-            byteCodeGenerator->tryScopeRecordsList.UnlinkFromEnd();
-        }
 
         byteCodeGenerator->Writer()->RecordCrossFrameEntryExitRecord(/* isEnterBlock = */ false);
 
@@ -12312,12 +12270,7 @@ void Emit(ParseNode* pnode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* func
             byteCodeGenerator->StartStatement(pnodeCatch);
             Assert(pnode1->IsPattern());
 
-            if (funcInfo->byteCodeFunction->IsCoroutine())
-            {
-                byteCodeGenerator->tryScopeRecordsList.LinkToEnd(&tryRecForCatch);
-            }
-
-            byteCodeGenerator->PushJumpCleanup(JumpCleanupInfo { pnodeCatch });
+            byteCodeGenerator->PushJumpCleanupForTry(Js::OpCode::ResumeCatch);
 
             EmitAssignment(nullptr, pnode1, location, byteCodeGenerator, funcInfo);
             byteCodeGenerator->EndStatement(pnodeCatch);
@@ -12339,23 +12292,13 @@ void Emit(ParseNode* pnode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* func
             byteCodeGenerator->StartStatement(pnodeCatch);
             byteCodeGenerator->Writer()->Empty(Js::OpCode::Nop);
             byteCodeGenerator->EndStatement(pnodeCatch);
-            if (funcInfo->byteCodeFunction->IsCoroutine())
-            {
-                byteCodeGenerator->tryScopeRecordsList.LinkToEnd(&tryRecForCatch);
-            }
 
-            byteCodeGenerator->PushJumpCleanup(JumpCleanupInfo { pnodeCatch });
+            byteCodeGenerator->PushJumpCleanupForTry(Js::OpCode::ResumeCatch);
         }
 
         Emit(pnodeCatch->pnodeBody, byteCodeGenerator, funcInfo, fReturnValue);
 
-        if (funcInfo->byteCodeFunction->IsCoroutine())
-        {
-            byteCodeGenerator->tryScopeRecordsList.UnlinkFromEnd();
-        }
-
         byteCodeGenerator->PopJumpCleanup();
-
         byteCodeGenerator->PopScope();
         byteCodeGenerator->RecordEndScopeObject(pnodeTryCatch);
 
@@ -12393,22 +12336,22 @@ void Emit(ParseNode* pnode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* func
 
         // [CONSIDER][aneeshd] Ideally the TryFinallyWithYield opcode needs to be used only if there is a yield expression.
         // For now, if the function is generator we are using the TryFinallyWithYield.
-        ByteCodeGenerator::TryScopeRecord tryRecForTry(Js::OpCode::TryFinallyWithYield, finallyLabel);
         if (funcInfo->byteCodeFunction->IsCoroutine())
         {
             regException = funcInfo->AcquireTmpRegister();
             regOffset = funcInfo->AcquireTmpRegister();
             byteCodeGenerator->Writer()->BrReg2(Js::OpCode::TryFinallyWithYield, finallyLabel, regException, regOffset);
-            tryRecForTry.reg1 = regException;
-            tryRecForTry.reg2 = regOffset;
-            byteCodeGenerator->tryScopeRecordsList.LinkToEnd(&tryRecForTry);
+            byteCodeGenerator->PushJumpCleanupForTry(
+                Js::OpCode::TryFinallyWithYield,
+                finallyLabel,
+                regException,
+                regOffset);
         }
         else
         {
             byteCodeGenerator->Writer()->Br(Js::OpCode::TryFinally, finallyLabel);
+            byteCodeGenerator->PushJumpCleanupForTry(Js::OpCode::TryFinally, finallyLabel);
         }
-
-        byteCodeGenerator->PushJumpCleanup(JumpCleanupInfo { pnodeTry });
 
         // Increasing the stack as we will be storing the additional values when we enter try..finally.
         funcInfo->StartRecordingOutArgs(1);
@@ -12416,13 +12359,7 @@ void Emit(ParseNode* pnode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* func
         Emit(pnodeTry->pnodeBody, byteCodeGenerator, funcInfo, fReturnValue);
         funcInfo->ReleaseLoc(pnodeTry->pnodeBody);
 
-        if (funcInfo->byteCodeFunction->IsCoroutine())
-        {
-            byteCodeGenerator->tryScopeRecordsList.UnlinkFromEnd();
-        }
-
         byteCodeGenerator->PopJumpCleanup();
-
         byteCodeGenerator->Writer()->Empty(Js::OpCode::Leave);
         byteCodeGenerator->Writer()->RecordCrossFrameEntryExitRecord(false);
 
@@ -12435,20 +12372,17 @@ void Emit(ParseNode* pnode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* func
         byteCodeGenerator->Writer()->MarkLabel(finallyLabel);
         byteCodeGenerator->Writer()->Empty(Js::OpCode::Finally);
 
-        ByteCodeGenerator::TryScopeRecord tryRecForFinally(Js::OpCode::ResumeFinally, finallyLabel, regException, regOffset);
-        if (funcInfo->byteCodeFunction->IsCoroutine())
-        {
-            byteCodeGenerator->tryScopeRecordsList.LinkToEnd(&tryRecForFinally);
-        }
-
-        byteCodeGenerator->PushJumpCleanup(JumpCleanupInfo { pnodeFinally });
+        byteCodeGenerator->PushJumpCleanupForTry(
+            Js::OpCode::ResumeFinally,
+            finallyLabel,
+            regException,
+            regOffset);
 
         Emit(pnodeFinally->pnodeBody, byteCodeGenerator, funcInfo, fReturnValue);
         funcInfo->ReleaseLoc(pnodeFinally->pnodeBody);
 
         if (funcInfo->byteCodeFunction->IsCoroutine())
         {
-            byteCodeGenerator->tryScopeRecordsList.UnlinkFromEnd();
             funcInfo->ReleaseTmpRegister(regOffset);
             funcInfo->ReleaseTmpRegister(regException);
         }
