@@ -12,8 +12,8 @@ void EmitAssignment(ParseNode *asgnNode, ParseNode *lhs, Js::RegSlot rhsLocation
 void EmitLoad(ParseNode *rhs, ByteCodeGenerator *byteCodeGenerator, FuncInfo *funcInfo);
 void EmitCall(ParseNodeCall* pnodeCall, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo, BOOL fReturnValue, BOOL fEvaluateComponents, Js::RegSlot overrideThisLocation = Js::Constants::NoRegister, Js::RegSlot newTargetLocation = Js::Constants::NoRegister);
 void EmitStartupYield(ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo);
-void EmitYield(Js::RegSlot inputLocation, Js::RegSlot resultLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo);
-void EmitAwait(Js::RegSlot inputLocation, Js::RegSlot resultLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo);
+void EmitYield(Js::RegSlot resultReg, Js::RegSlot inputReg, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo);
+void EmitAwait(Js::RegSlot resultReg, Js::RegSlot inputReg, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo);
 
 void EmitUseBeforeDeclaration(Symbol *sym, ByteCodeGenerator *byteCodeGenerator, FuncInfo *funcInfo);
 void EmitUseBeforeDeclarationRuntimeError(ByteCodeGenerator *byteCodeGenerator, Js::RegSlot location);
@@ -9530,6 +9530,7 @@ void ByteCodeGenerator::EmitInvertedLoop(ParseNodeStmt* outerLoop, ParseNodeFor*
     this->m_writer.MarkLabel(afterInvertedLoop);
 }
 
+// TODO(zenparsing): Clean this up a bit
 void EmitGetIterator(Js::RegSlot iteratorLocation, Js::RegSlot iterableLocation, ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo, bool isAsync)
 {
     // get iterator object from the iterable
@@ -10347,11 +10348,9 @@ void ByteCodeGenerator::EmitTryBlockHeadersAfterYield()
     }
 }
 
-// TODO(zenparsing): Many of these signatures take the input first and the dest second
-// but many other helpers are reversed. Which should it be?
 void EmitYieldAndResume(
-    Js::RegSlot inputReg,
     Js::RegSlot resumeValueReg,
+    Js::RegSlot inputReg,
     Js::ByteCodeLabel resumeNormalLabel,
     Js::ByteCodeLabel resumeThrowLabel,
     ByteCodeGenerator* byteCodeGenerator,
@@ -10419,8 +10418,8 @@ void EmitReturnFromYield(
 }
 
 void EmitYieldIteratorResult(
-    Js::RegSlot inputReg,
     Js::RegSlot resultReg,
+    Js::RegSlot inputReg,
     ByteCodeGenerator* byteCodeGenerator,
     FuncInfo* funcInfo)
 {
@@ -10432,8 +10431,8 @@ void EmitYieldIteratorResult(
     Js::ByteCodeLabel resumeThrow = writer->DefineLabel();
 
     EmitYieldAndResume(
-        inputReg,
         resultReg,
+        inputReg,
         resumeNormal,
         resumeThrow,
         byteCodeGenerator,
@@ -10468,8 +10467,8 @@ void EmitStartupYield(ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo)
 }
 
 void EmitAwait(
-    Js::RegSlot inputLocation,
-    Js::RegSlot resultLocation,
+    Js::RegSlot resultReg,
+    Js::RegSlot inputReg,
     ByteCodeGenerator* byteCodeGenerator,
     FuncInfo* funcInfo)
 {
@@ -10477,7 +10476,7 @@ void EmitAwait(
 
     byteCodeGenerator->Writer()->PatchableProperty(
         Js::OpCode::StFld,
-        inputLocation,
+        inputReg,
         funcInfo->yieldRegister,
         funcInfo->FindOrAddInlineCacheId(
             funcInfo->yieldRegister,
@@ -10495,38 +10494,60 @@ void EmitAwait(
             false,
             true));
 
-    EmitYieldIteratorResult(funcInfo->yieldRegister, resultLocation, byteCodeGenerator, funcInfo);
+    EmitYieldIteratorResult(resultReg, funcInfo->yieldRegister, byteCodeGenerator, funcInfo);
 }
 
-void EmitYield(
-    Js::RegSlot inputLocation,
-    Js::RegSlot resultLocation,
+void EmitCreateYieldResult(
+    Js::RegSlot resultReg,
+    Js::RegSlot inputReg,
     ByteCodeGenerator* byteCodeGenerator,
     FuncInfo* funcInfo)
 {
-    byteCodeGenerator->Writer()->Reg1(Js::OpCode::NewScObjectSimple, funcInfo->yieldRegister);
+    Assert(resultReg != inputReg);
+
+    byteCodeGenerator->Writer()->Reg1(Js::OpCode::NewScObjectSimple, resultReg);
 
     byteCodeGenerator->Writer()->PatchableProperty(
         Js::OpCode::StFld,
-        inputLocation,
-        funcInfo->yieldRegister,
-        funcInfo->FindOrAddInlineCacheId(
-            funcInfo->yieldRegister,
-            Js::PropertyIds::value,
-            false,
-            true));
+        inputReg,
+        resultReg,
+        funcInfo->FindOrAddInlineCacheId(resultReg, Js::PropertyIds::value, false, true));
 
     byteCodeGenerator->Writer()->PatchableProperty(
         Js::OpCode::StFld,
         funcInfo->falseConstantRegister,
-        funcInfo->yieldRegister,
-        funcInfo->FindOrAddInlineCacheId(
-            funcInfo->yieldRegister,
-            Js::PropertyIds::done,
-            false,
-            true));
+        resultReg,
+        funcInfo->FindOrAddInlineCacheId(resultReg, Js::PropertyIds::done, false, true));
+}
 
-    EmitYieldIteratorResult(funcInfo->yieldRegister, resultLocation, byteCodeGenerator, funcInfo);
+void EmitYield(
+    Js::RegSlot resultReg,
+    Js::RegSlot inputReg,
+    ByteCodeGenerator* byteCodeGenerator,
+    FuncInfo* funcInfo)
+{
+    EmitCreateYieldResult(funcInfo->yieldRegister, inputReg, byteCodeGenerator, funcInfo);
+    EmitYieldIteratorResult(resultReg, funcInfo->yieldRegister, byteCodeGenerator, funcInfo);
+}
+
+void EmitFunctionCall(
+    Js::RegSlot resultReg,
+    Js::RegSlot funcReg,
+    std::initializer_list<Js::RegSlot> args,
+    ByteCodeGenerator* byteCodeGenerator,
+    FuncInfo* funcInfo)
+{
+    Js::ArgSlot argCount = static_cast<Js::ArgSlot>(args.size());
+
+    funcInfo->StartRecordingOutArgs(argCount);
+    Js::ProfileId callSite = byteCodeGenerator->GetNextCallSiteId(Js::OpCode::CallI);
+    byteCodeGenerator->Writer()->StartCall(Js::OpCode::StartCall, argCount);
+
+    Js::ArgSlot i = 0;
+    for (Js::RegSlot argReg : args)
+        byteCodeGenerator->Writer()->ArgOut<true>(i++, argReg, callSite, false);
+
+    byteCodeGenerator->Writer()->CallI(Js::OpCode::CallI, resultReg, funcReg, argCount, callSite);
 }
 
 void EmitYieldStar(
@@ -10534,14 +10555,15 @@ void EmitYieldStar(
     ByteCodeGenerator* byteCodeGenerator,
     FuncInfo* funcInfo)
 {
-    // TODO(zenparsing): The control flow should be cleaned up so that we
-    // aren't repeating code sequences (e.g. EmitIteratorNext and EmitReturnFromYield)
-
     bool isAsync = funcInfo->IsAsyncGenerator();
     auto* writer = byteCodeGenerator->Writer();
 
     Js::ByteCodeLabel loopEntrance = writer->DefineLabel();
+    Js::ByteCodeLabel continueLoop = writer->DefineLabel();
     Js::ByteCodeLabel continuePastLoop = writer->DefineLabel();
+    Js::ByteCodeLabel finishReturn = writer->DefineLabel();
+    Js::ByteCodeLabel finishNormal = writer->DefineLabel();
+
     Js::RegSlot yieldStarReg = yieldStarNode->location;
 
     // Initialize shouldReturn to false; this flag is used to indicate
@@ -10550,10 +10572,10 @@ void EmitYieldStar(
     writer->Reg2(Js::OpCode::Ld_A, shouldReturnReg, funcInfo->falseConstantRegister);
 
     // Evaluate operand and get the inner iterator
-    Js::RegSlot iteratorLocation = funcInfo->AcquireTmpRegister();
+    Js::RegSlot iteratorReg = funcInfo->AcquireTmpRegister();
     Emit(yieldStarNode->pnode1, byteCodeGenerator, funcInfo, false);
     EmitGetIterator(
-        iteratorLocation,
+        iteratorReg,
         yieldStarNode->pnode1->location,
         byteCodeGenerator,
         funcInfo,
@@ -10561,11 +10583,24 @@ void EmitYieldStar(
 
     funcInfo->ReleaseLoc(yieldStarNode->pnode1);
 
+    // TODO(zenparsing): The "PatchableProperty" pattern here is very wordy
+    // and easy to get wrong. Should we try to improve while we're here?
+
+    // Load next method
+    Js::RegSlot nextMethodReg = funcInfo->AcquireTmpRegister();
+    writer->PatchableProperty(
+        Js::OpCode::LdMethodFld,
+        nextMethodReg,
+        iteratorReg,
+        funcInfo->FindOrAddInlineCacheId(iteratorReg, Js::PropertyIds::next, true, false),
+        false,
+        true);
+
     // Call the next method of iterator to obtain the first result
-    EmitIteratorNext(
+    EmitFunctionCall(
         yieldStarReg,
-        iteratorLocation, 
-        funcInfo->undefinedConstantRegister,
+        nextMethodReg,
+        {iteratorReg, funcInfo->undefinedConstantRegister},
         byteCodeGenerator,
         funcInfo);
 
@@ -10580,9 +10615,6 @@ void EmitYieldStar(
     // If this is an async generator await the yielded value
     if (isAsync)
         EmitAwait(yieldStarReg, yieldStarReg, byteCodeGenerator, funcInfo);
-
-    // TODO(zenparsing): This is going to duplicate the bytecode generated
-    // by the call to EmitIteratorNext
 
     // Throw if the result is not an Object
     Js::ByteCodeLabel resultIsObject = writer->DefineLabel();
@@ -10605,10 +10637,20 @@ void EmitYieldStar(
     Js::ByteCodeLabel resumeThrow = writer->DefineLabel();
     Js::RegSlot resumeValueReg = funcInfo->AcquireTmpRegister();
 
+    if (isAsync)
+    {
+        // For async generators, extract the value property and wrap it in a
+        // new result object
+        Js::RegSlot valueReg = funcInfo->AcquireTmpRegister();
+        EmitIteratorValue(valueReg, yieldStarReg, byteCodeGenerator, funcInfo);
+        EmitCreateYieldResult(yieldStarReg, valueReg, byteCodeGenerator, funcInfo);
+        funcInfo->ReleaseTmpRegister(valueReg);
+    }
+
     // Yield the next result to the caller
     EmitYieldAndResume(
-        yieldStarReg,
         resumeValueReg,
+        yieldStarReg,
         resumeNormal,
         resumeThrow,
         byteCodeGenerator,
@@ -10621,16 +10663,14 @@ void EmitYieldStar(
 
     // Load return method
     writer->PatchableProperty(
-        Js::OpCode::LdFld,
+        Js::OpCode::LdMethodFld,
         returnMethodReg,
-        iteratorLocation,
-        funcInfo->FindOrAddInlineCacheId(
-            iteratorLocation,
-            Js::PropertyIds::return_,
-            false,
-            false));
+        iteratorReg,
+        funcInfo->FindOrAddInlineCacheId(iteratorReg, Js::PropertyIds::return_, true, false),
+        false,
+        true);
 
-    // Branch to immediate return if return method is undefined or null
+    // Test for iterator return method
     Js::ByteCodeLabel noReturnMethod = writer->DefineLabel();
     writer->BrReg2(
         Js::OpCode::BrEq_A,
@@ -10638,31 +10678,25 @@ void EmitYieldStar(
         returnMethodReg,
         funcInfo->undefinedConstantRegister);
 
-    funcInfo->ReleaseTmpRegister(returnMethodReg);
-
-    // TODO(zenparsing): It seems strange that we are doing two lookups
-    // on the "return" property, essentially. Why? We might not be able
-    // to do anything about this now.
-
-    // TODO(zenparsing): Attempting to call a non-function property will
-    // result in a generic "Function expected" error message. We should
-    // improve that more general problem.
-
-    // Invoke "return" method and loop
-    EmitInvoke(
+    // The iterator has a return method: call method and loop
+    EmitFunctionCall(
         yieldStarReg,
-        iteratorLocation,
-        Js::PropertyIds::return_,
+        returnMethodReg,
+        {iteratorReg, resumeValueReg},
         byteCodeGenerator,
-        funcInfo,
-        resumeValueReg);
+        funcInfo);
 
-    // TODO(zenparsing): Is branching to loopEntrance the right thing to do?
-    // Do we need another label (e.g. continueLabel)?
-    writer->Br(loopEntrance);
+    funcInfo->ReleaseTmpRegister(returnMethodReg);
+    writer->Br(continueLoop);
 
+    // The iterator does not have a return method: exit loop
     writer->MarkLabel(noReturnMethod);
-    EmitReturnFromYield(resumeValueReg, byteCodeGenerator, funcInfo);
+
+    if (isAsync)
+        EmitAwait(resumeValueReg, resumeValueReg, byteCodeGenerator, funcInfo);
+
+    writer->Reg2(Js::OpCode::Ld_A, yieldStarReg, resumeValueReg);    
+    writer->Br(finishReturn);
 
     // Throw case: attempt to call throw
     writer->MarkLabel(resumeThrow);
@@ -10672,71 +10706,68 @@ void EmitYieldStar(
 
     // Load throw method
     writer->PatchableProperty(
-        Js::OpCode::LdFld,
+        Js::OpCode::LdMethodFld,
         throwMethodReg,
-        iteratorLocation,
-        funcInfo->FindOrAddInlineCacheId(
-            iteratorLocation,
-            Js::PropertyIds::throw_,
-            false,
-            false));
+        iteratorReg,
+        funcInfo->FindOrAddInlineCacheId(iteratorReg, Js::PropertyIds::throw_, true, false),
+        false,
+        true);
 
-    // Branch if method is undefined or null
     writer->BrReg2(
         Js::OpCode::BrEq_A,
         noThrowMethod,
         throwMethodReg,
         funcInfo->undefinedConstantRegister);
 
-    funcInfo->ReleaseTmpRegister(throwMethodReg);
-
-    // Call throw method and loop
-    EmitInvoke(
+    // Iterator has throw method: call method and loop
+    EmitFunctionCall(
         yieldStarReg,
-        iteratorLocation,
-        Js::PropertyIds::throw_,
+        throwMethodReg,
+        {iteratorReg, resumeValueReg},
         byteCodeGenerator,
-        funcInfo,
-        resumeValueReg);
+        funcInfo);
 
-    writer->Br(loopEntrance);
+    funcInfo->ReleaseTmpRegister(throwMethodReg);
+    writer->Br(continueLoop);
 
     // Iterator does not have a throw method; close the iterator and throw a TypeError
     writer->MarkLabel(noThrowMethod);
-    EmitIteratorClose(iteratorLocation, byteCodeGenerator, funcInfo, isAsync);
+    EmitIteratorClose(iteratorReg, byteCodeGenerator, funcInfo, isAsync);
     byteCodeGenerator->Writer()->W1(
         Js::OpCode::RuntimeTypeError,
         SCODE_CODE(JSERR_YieldStarThrowMissing));
 
     // Normal case: call next method of iterator
     writer->MarkLabel(resumeNormal);
-    EmitIteratorNext(
+    EmitFunctionCall(
         yieldStarReg,
-        iteratorLocation,
-        resumeValueReg,
+        nextMethodReg,
+        {iteratorReg, resumeValueReg},
         byteCodeGenerator,
         funcInfo);
 
     funcInfo->ReleaseTmpRegister(resumeValueReg);
-    funcInfo->ReleaseTmpRegister(iteratorLocation);
+    funcInfo->ReleaseTmpRegister(nextMethodReg);
+    funcInfo->ReleaseTmpRegister(iteratorReg);
 
     // Loop end
+    writer->MarkLabel(continueLoop);
     writer->Br(loopEntrance);
     writer->MarkLabel(continuePastLoop);
     writer->ExitLoop(loopId);
 
     // Load the iterator result value into place
     EmitIteratorValue(yieldStarReg, yieldStarReg, byteCodeGenerator, funcInfo);
-
-    Js::ByteCodeLabel normalCompletion = writer->DefineLabel();
-    writer->BrReg1(Js::OpCode::BrFalse_A, normalCompletion, shouldReturnReg);
+    
+    writer->BrReg1(Js::OpCode::BrFalse_A, finishNormal, shouldReturnReg);
     funcInfo->ReleaseTmpRegister(shouldReturnReg);
 
     // Return case: return the value from the generator
+    writer->MarkLabel(finishReturn);
     EmitReturnFromYield(yieldStarReg, byteCodeGenerator, funcInfo);
 
     // Normal case
-    writer->MarkLabel(normalCompletion);
+    writer->MarkLabel(finishNormal);
 }
 
 void TrackIntConstantsOnGlobalUserObject(ByteCodeGenerator *byteCodeGenerator, bool isSymGlobalAndSingleAssignment, Js::PropertyId propertyId)
@@ -11917,9 +11948,13 @@ void Emit(ParseNode* pnode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* func
             Emit(pnodeReturn->pnodeExpr, byteCodeGenerator, funcInfo, fReturnValue);
             if (funcInfo->IsAsyncGenerator())
             {
-                EmitAwait(pnodeReturn->pnodeExpr, pnodeReturn->pnodeExpr, byteCodeGenerator, funcInfo);
+                EmitAwait(
+                    ByteCodeGenerator::ReturnRegister,
+                    pnodeReturn->pnodeExpr->location,
+                    byteCodeGenerator,
+                    funcInfo);
             }
-            if (pnodeReturn->pnodeExpr->location != ByteCodeGenerator::ReturnRegister)
+            else if (pnodeReturn->pnodeExpr->location != ByteCodeGenerator::ReturnRegister)
             {
                 byteCodeGenerator->Writer()->Reg2(Js::OpCode::Ld_A, ByteCodeGenerator::ReturnRegister, pnodeReturn->pnodeExpr->location);
             }
@@ -12412,14 +12447,14 @@ void Emit(ParseNode* pnode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* func
     case knopYieldLeaf:
         byteCodeGenerator->StartStatement(pnode);
         funcInfo->AcquireLoc(pnode);
-        EmitYield(funcInfo->undefinedConstantRegister, pnode->location, byteCodeGenerator, funcInfo);
+        EmitYield(pnode->location, funcInfo->undefinedConstantRegister, byteCodeGenerator, funcInfo);
         byteCodeGenerator->EndStatement(pnode);
         break;
     case knopAwait:
         byteCodeGenerator->StartStatement(pnode);
         funcInfo->AcquireLoc(pnode);
         Emit(pnode->AsParseNodeUni()->pnode1, byteCodeGenerator, funcInfo, false);
-        EmitAwait(pnode->AsParseNodeUni()->pnode1->location, pnode->location, byteCodeGenerator, funcInfo);
+        EmitAwait(pnode->location, pnode->AsParseNodeUni()->pnode1->location, byteCodeGenerator, funcInfo);
         funcInfo->ReleaseLoc(pnode->AsParseNodeUni()->pnode1);
         byteCodeGenerator->EndStatement(pnode);
         break;
@@ -12427,7 +12462,7 @@ void Emit(ParseNode* pnode, ByteCodeGenerator* byteCodeGenerator, FuncInfo* func
         byteCodeGenerator->StartStatement(pnode);
         funcInfo->AcquireLoc(pnode);
         Emit(pnode->AsParseNodeUni()->pnode1, byteCodeGenerator, funcInfo, false);
-        EmitYield(pnode->AsParseNodeUni()->pnode1->location, pnode->location, byteCodeGenerator, funcInfo);
+        EmitYield(pnode->location, pnode->AsParseNodeUni()->pnode1->location, byteCodeGenerator, funcInfo);
         funcInfo->ReleaseLoc(pnode->AsParseNodeUni()->pnode1);
         byteCodeGenerator->EndStatement(pnode);
         break;

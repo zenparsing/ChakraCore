@@ -238,8 +238,7 @@ void JavascriptAsyncGenerator::ResumeCoroutine(Var value, ResumeYieldKind resume
     try
     {
         // Call the internal (sync) generator entry point
-        Var resultVar = this->CallGenerator(value, resumeKind);
-        result = VarTo<RecyclableObject>(resultVar);
+        result = VarTo<RecyclableObject>(this->CallGenerator(value, resumeKind));
     }
     catch (const JavascriptException& err)
     {
@@ -252,16 +251,23 @@ void JavascriptAsyncGenerator::ResumeCoroutine(Var value, ResumeYieldKind resume
         PropertyIds::value,
         GetScriptContext());
 
-    Assert(resultValue);
-
+    // TODO(zenparsing): Is there a more efficient way to test for the property?
     if (result->HasOwnProperty(PropertyIds::_internalSymbolIsAwait))
     {
         // If the result object has an _internalSymbolIsAwait property, then
         // we are processing an await expression
         UnwrapValue(resultValue, PendingState::Await);
     }
+    else if (IsCompleted())
+    {
+        // If the generator is completed, then resolve immediately. Return
+        // values are unwrapped explicitly by the code generated for the
+        // return statement.
+        ResolveNext(resultValue);
+    }
     else
     {
+        // Otherwise, await the yielded value
         UnwrapValue(resultValue, PendingState::Yield);
     }
 }

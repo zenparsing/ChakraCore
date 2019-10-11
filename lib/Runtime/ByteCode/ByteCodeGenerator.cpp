@@ -5166,6 +5166,10 @@ void AssignRegisters(ParseNode *pnode, ByteCodeGenerator *byteCodeGenerator)
         break;
     case knopReturn:
         {
+            if (byteCodeGenerator->TopFuncInfo()->IsAsyncGenerator())
+            {
+                AssignAwaitRegisters(byteCodeGenerator);
+            }
             ParseNode *pnodeExpr = pnode->AsParseNodeReturn()->pnodeExpr;
             CheckMaybeEscapedUse(pnodeExpr, byteCodeGenerator);
             break;
