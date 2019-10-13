@@ -45,6 +45,7 @@ var tests = [
             assert.throws(function () { eval("async function method() { var x = await; }"); }, SyntaxError, "'await' cannot be used as an identifier in an async function.", "Unexpected token ';' after 'await'");
         }
     },
+    /*
     {
         name: "Async keyword as generator",
         body: function () {
@@ -54,6 +55,7 @@ var tests = [
             assert.throws(function () { eval("class C { async *badFunction() { } };"); }, SyntaxError, "'async' keyword is not allowed with a generator in a class member", "Use of disabled experimental feature");
         }
     },
+    */
     {
         name: "Async classes",
         body: function () {

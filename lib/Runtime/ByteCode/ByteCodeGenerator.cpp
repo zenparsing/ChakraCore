@@ -4728,15 +4728,17 @@ void CheckFuncAssignment(Symbol * sym, ParseNode * pnode2, ByteCodeGenerator * b
 
 void AssignYieldResumeRegisters(ByteCodeGenerator* byteCodeGenerator)
 {
+    // TODO(zenparsing): Document this
     byteCodeGenerator->EnregisterConstant((uint)Js::ResumeYieldKind::Normal);
     byteCodeGenerator->EnregisterConstant((uint)Js::ResumeYieldKind::Throw);
 }
 
 void AssignAwaitRegisters(ByteCodeGenerator* byteCodeGenerator)
 {
+    // TOOD(zenparsing): Document this
     // The _internalSymbolIsAwait property of the result object is set to true
     byteCodeGenerator->AssignTrueConstRegister();
-    AssignYieldResumeRegisters(byteCodeGenerator);
+    byteCodeGenerator->EnregisterConstant((uint)Js::ResumeYieldKind::Normal);
 }
 
 // Assign permanent (non-temp) registers for the function.

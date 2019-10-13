@@ -10437,7 +10437,7 @@ void ByteCodeGenerator::EmitTryBlockHeadersAfterYield()
     }
 }
 
-// TODO(zenparsing): We need to document this function better
+// TODO(zenparsing): Document this function
 void EmitYieldAndResume(
     Js::RegSlot resumeValueReg,
     Js::RegSlot inputReg,
@@ -10483,17 +10483,22 @@ void EmitYieldAndResume(
         (uint)Js::ResumeYieldKind::Normal,
         Js::Constants::NoRegister);
 
-    Js::RegSlot throwConst = funcInfo->constantToRegister.Lookup(
-        (uint)Js::ResumeYieldKind::Throw,
-        Js::Constants::NoRegister);
-
-    Assert(throwConst != Js::Constants::NoRegister && normalConst != Js::Constants::NoRegister);
+    Assert(normalConst != Js::Constants::NoRegister);
 
     // Branch to normal resume if kind is Normal
     writer->BrReg2(Js::OpCode::BrSrEq_A, resumeNormalLabel, resumeKindReg, normalConst);
 
-    // Branch to throw if kind is Throw
-    writer->BrReg2(Js::OpCode::BrSrEq_A, resumeThrowLabel, resumeKindReg, throwConst);
+    if (resumeThrowLabel != Js::Constants::NoByteCodeLabel)
+    {
+        Js::RegSlot throwConst = funcInfo->constantToRegister.Lookup(
+            (uint)Js::ResumeYieldKind::Throw,
+            Js::Constants::NoRegister);
+
+        Assert(throwConst != Js::Constants::NoRegister);
+
+        // Branch to throw if kind is Throw
+        writer->BrReg2(Js::OpCode::BrSrEq_A, resumeThrowLabel, resumeKindReg, throwConst);
+    }
 
     funcInfo->ReleaseTmpRegister(resumeKindReg);
 }
@@ -10507,38 +10512,6 @@ void EmitReturnFromYield(
     writer->Reg2(Js::OpCode::Ld_A, ByteCodeGenerator::ReturnRegister, resultReg);
     byteCodeGenerator->EmitJumpCleanup(nullptr, funcInfo);
     writer->Br(funcInfo->singleExit);
-}
-
-void EmitYieldIteratorResult(
-    Js::RegSlot resultReg,
-    Js::RegSlot inputReg,
-    ByteCodeGenerator* byteCodeGenerator,
-    FuncInfo* funcInfo)
-{
-    Assert(inputReg == funcInfo->yieldRegister);
-
-    auto* writer = byteCodeGenerator->Writer();
-
-    Js::ByteCodeLabel resumeNormal = writer->DefineLabel();
-    Js::ByteCodeLabel resumeThrow = writer->DefineLabel();
-
-    EmitYieldAndResume(
-        resultReg,
-        inputReg,
-        resumeNormal,
-        resumeThrow,
-        byteCodeGenerator,
-        funcInfo);
-
-    // Return case: set the return register value and branch to function exit
-    EmitReturnFromYield(resultReg, byteCodeGenerator, funcInfo);
-
-    // Throw case: throw the resume value
-    writer->MarkLabel(resumeThrow);
-    writer->Reg1(Js::OpCode::Throw, resultReg);
-
-    // Normal case: continue (value is already in result register)
-    writer->MarkLabel(resumeNormal);
 }
 
 void EmitStartupYield(ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo)
@@ -10564,23 +10537,46 @@ void EmitAwait(
     ByteCodeGenerator* byteCodeGenerator,
     FuncInfo* funcInfo)
 {
-    Js::RegSlot yieldReg = funcInfo->yieldRegister;
-    byteCodeGenerator->Writer()->Reg1(Js::OpCode::NewScObjectSimple, yieldReg);
+    // TODO(zenparsing): [Performance] We should only have to allocate this
+    // object once before any awaits. Awaiting should merely set the value
+    // property of that object.
 
-    byteCodeGenerator->Writer()->PatchableProperty(
+    auto* writer = byteCodeGenerator->Writer();
+    Js::RegSlot yieldReg = funcInfo->yieldRegister;
+
+    writer->Reg1(Js::OpCode::NewScObjectSimple, yieldReg);
+
+    writer->PatchableProperty(
         Js::OpCode::StFld,
         inputReg,
         yieldReg,
         funcInfo->FindOrAddInlineCacheId(yieldReg, Js::PropertyIds::value, false, true));
 
-    byteCodeGenerator->Writer()->PatchableProperty(
+    writer->PatchableProperty(
         Js::OpCode::StFld,
         funcInfo->trueConstantRegister,
         yieldReg,
         funcInfo->FindOrAddInlineCacheId(
-            yieldReg, Js::PropertyIds::_internalSymbolIsAwait, false, true));
+            yieldReg,
+            Js::PropertyIds::_internalSymbolIsAwait,
+            false,
+            true));
 
-    EmitYieldIteratorResult(resultReg, yieldReg, byteCodeGenerator, funcInfo);
+    Js::ByteCodeLabel resumeNormal = writer->DefineLabel();
+
+    EmitYieldAndResume(
+        resultReg,
+        yieldReg,
+        resumeNormal,
+        Js::Constants::NoByteCodeLabel,
+        byteCodeGenerator,
+        funcInfo);
+
+    // Throw case: throw the resume value
+    writer->Reg1(Js::OpCode::Throw, resultReg);
+
+    // Normal case: continue (value is already in result register)
+    writer->MarkLabel(resumeNormal);
 }
 
 void EmitCreateYieldResult(
@@ -10612,8 +10608,31 @@ void EmitYield(
     ByteCodeGenerator* byteCodeGenerator,
     FuncInfo* funcInfo)
 {
-    EmitCreateYieldResult(funcInfo->yieldRegister, inputReg, byteCodeGenerator, funcInfo);
-    EmitYieldIteratorResult(resultReg, funcInfo->yieldRegister, byteCodeGenerator, funcInfo);
+    auto* writer = byteCodeGenerator->Writer();
+    Js::RegSlot yieldReg = funcInfo->yieldRegister;
+
+    EmitCreateYieldResult(yieldReg, inputReg, byteCodeGenerator, funcInfo);
+
+    Js::ByteCodeLabel resumeNormal = writer->DefineLabel();
+    Js::ByteCodeLabel resumeThrow = writer->DefineLabel();
+
+    EmitYieldAndResume(
+        resultReg,
+        yieldReg,
+        resumeNormal,
+        resumeThrow,
+        byteCodeGenerator,
+        funcInfo);
+
+    // Return case: set the return register value and branch to function exit
+    EmitReturnFromYield(resultReg, byteCodeGenerator, funcInfo);
+
+    // Throw case: throw the resume value
+    writer->MarkLabel(resumeThrow);
+    writer->Reg1(Js::OpCode::Throw, resultReg);
+
+    // Normal case: continue (value is already in result register)
+    writer->MarkLabel(resumeNormal);
 }
 
 void EmitYieldStar(
@@ -10669,11 +10688,6 @@ void EmitYieldStar(
     // Begin loop
     uint loopId = writer->EnterLoop(loopEntrance);
 
-    // TODO(zenparsing): User defined loops are profiled, and when we branch
-    // out of the loop early, we do something like the following:
-    // writer->Unsigned1(Js::OpCode::ProfiledLoopEnd, loopId)
-    // Should we do similar for returns in this loop?
-
     // If this is an async generator await the yielded value
     if (isAsync)
         EmitAwait(yieldStarReg, yieldStarReg, byteCodeGenerator, funcInfo);
@@ -10703,7 +10717,8 @@ void EmitYieldStar(
     if (isAsync)
     {
         // For async generators, extract the value property and wrap it in a
-        // new result object
+        // new result object, so that exceptions thrown when getting the value
+        // property are handled appropriately
         Js::RegSlot valueReg = funcInfo->AcquireTmpRegister();
 
         EmitGetObjectProperty(

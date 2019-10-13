@@ -10275,11 +10275,13 @@ SetElementIHelper_INDEX_TYPE_IS_NUMBER:
 
         auto* scriptContext = yieldData->scriptContext;
 
-        // TODO(zenparsing): How can we optimize the general case so
-        // that we aren't allocating a new object for every resume?
+        // TODO(zenparsing): [Performance] how can we optimize the general 
+        // case so that we aren't allocating a new object for every resume?
+        // Also, if we already have a Var pointer, can we lower this helper
+        // out?
 
-        // TODO(zenparsing): Not sure if this is the optimal call to
-        // CreateObject.
+        // TODO(zenparsing): [Performance] Not sure if this is the optimal
+        // call to CreateObject.
 
         auto* resultObj = scriptContext->GetLibrary()->CreateObject(true, 2);
         Var kindVar = TaggedInt::ToVarUnchecked((int)yieldData->kind);
