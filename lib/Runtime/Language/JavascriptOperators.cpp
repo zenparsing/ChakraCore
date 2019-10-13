@@ -10275,29 +10275,12 @@ SetElementIHelper_INDEX_TYPE_IS_NUMBER:
 
         auto* scriptContext = yieldData->scriptContext;
 
-        /*
-        if (yieldData->kind == ResumeYieldKind::Throw)
-        {
-            auto* exception = RecyclerNew(
-                scriptContext->GetRecycler(),
-                JavascriptExceptionObject,
-                yieldData->data,
-                scriptContext,
-                nullptr);
-
-            // Use ThrowExceptionObject to get debugger support for
-            // breaking on throw
-            JavascriptExceptionOperators::ThrowExceptionObject(
-                exception,
-                scriptContext,
-                true);
-        }
-        */
-
         // TODO(zenparsing): How can we optimize the general case so
         // that we aren't allocating a new object for every resume?
+
         // TODO(zenparsing): Not sure if this is the optimal call to
         // CreateObject.
+
         auto* resultObj = scriptContext->GetLibrary()->CreateObject(true, 2);
         Var kindVar = TaggedInt::ToVarUnchecked((int)yieldData->kind);
         JavascriptOperators::InitProperty(resultObj, PropertyIds::value, yieldData->data);

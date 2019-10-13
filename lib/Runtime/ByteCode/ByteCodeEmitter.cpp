@@ -9661,25 +9661,18 @@ void EmitGetAsyncIterator(
         funcInfo);
 
     EmitFunctionCall(resultReg, resultReg, {iterableReg}, byteCodeGenerator, funcInfo);
+    EmitThrowOnNotObject(resultReg, byteCodeGenerator);
 
-    Js::ByteCodeLabel verifyObject = writer->DefineLabel();
-    writer->Br(verifyObject);
+    Js::ByteCodeLabel finished = writer->DefineLabel();
+    writer->Br(finished);
 
-    // Iterable does not have a Symbol.asyncIterator method. Attempt to get a sync
+    // Iterable does not have a Symbol.asyncIterator method: attempt to get a sync
     // iterable and wrap it with an AsyncFromSyncIterator
     writer->MarkLabel(noAsyncIterator);
-    EmitGetObjectMethod(
-        resultReg,
-        iterableReg,
-        Js::PropertyIds::_symbolIterator,
-        byteCodeGenerator,
-        funcInfo);
-
-    EmitFunctionCall(resultReg, resultReg, {iterableReg}, byteCodeGenerator, funcInfo);
+    EmitGetIterator(resultReg, iterableReg, byteCodeGenerator, funcInfo);
     writer->Reg2(Js::OpCode::NewAsyncFromSyncIterator, resultReg, resultReg);
 
-    byteCodeGenerator->Writer()->MarkLabel(verifyObject);
-    EmitThrowOnNotObject(resultReg, byteCodeGenerator);
+    byteCodeGenerator->Writer()->MarkLabel(finished);
 }
 
 // Generating
