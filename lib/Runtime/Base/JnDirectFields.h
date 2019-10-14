@@ -40,8 +40,7 @@ ENTRY_SYMBOL(_symbolToPrimitive, _u("Symbol.toPrimitive"))
 ENTRY_SYMBOL(_symbolToStringTag, _u("Symbol.toStringTag"))
 ENTRY_SYMBOL(_symbolUnscopables, _u("Symbol.unscopables"))
 
-// TODO(zenparsing): Do I need to add an associated symbol in JavascriptLibrary
-// for this? What happens if we accidentally leak this property ID?
+// Internal property used to identify results yielded by await
 ENTRY_INTERNAL_SYMBOL(_internalSymbolIsAwait)
 
 // math functions must remain contiguous for quick modification check

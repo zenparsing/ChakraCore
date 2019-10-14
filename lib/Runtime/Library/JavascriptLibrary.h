@@ -1083,8 +1083,7 @@ namespace Js
 
         DynamicObject* CreateIteratorResultObject(Var value, Var done);
         DynamicObject* CreateIteratorResultObject(Var value, bool done = false);
-        DynamicObject* CreateIteratorResultObjectValueFalse(Var value);
-        DynamicObject* CreateIteratorResultObjectUndefinedTrue();
+        DynamicObject* CreateIteratorResultObjectDone();
 
         RecyclableObject* CreateThrowErrorObject(JavascriptError* error);
 

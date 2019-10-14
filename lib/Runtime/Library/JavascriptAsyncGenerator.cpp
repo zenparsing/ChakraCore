@@ -251,7 +251,6 @@ void JavascriptAsyncGenerator::ResumeCoroutine(Var value, ResumeYieldKind resume
         PropertyIds::value,
         GetScriptContext());
 
-    // TODO(zenparsing): Is there a more efficient way to test for the property?
     if (result->HasOwnProperty(PropertyIds::_internalSymbolIsAwait))
     {
         // If the result object has an _internalSymbolIsAwait property, then

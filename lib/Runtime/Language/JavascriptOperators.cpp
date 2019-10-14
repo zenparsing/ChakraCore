@@ -10280,9 +10280,6 @@ SetElementIHelper_INDEX_TYPE_IS_NUMBER:
         // Also, if we already have a Var pointer, can we lower this helper
         // out?
 
-        // TODO(zenparsing): [Performance] Not sure if this is the optimal
-        // call to CreateObject.
-
         auto* resultObj = scriptContext->GetLibrary()->CreateObject(true, 2);
         Var kindVar = TaggedInt::ToVarUnchecked((int)yieldData->kind);
         JavascriptOperators::InitProperty(resultObj, PropertyIds::value, yieldData->data);

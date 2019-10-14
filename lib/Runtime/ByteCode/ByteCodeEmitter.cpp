@@ -10437,7 +10437,6 @@ void ByteCodeGenerator::EmitTryBlockHeadersAfterYield()
     }
 }
 
-// TODO(zenparsing): Document this function
 void EmitYieldAndResume(
     Js::RegSlot resumeValueReg,
     Js::RegSlot inputReg,
@@ -10446,6 +10445,11 @@ void EmitYieldAndResume(
     ByteCodeGenerator* byteCodeGenerator,
     FuncInfo* funcInfo)
 {
+    // If `resultThrowLabel` is a valid label, then the instruction
+    // sequence following this call must handle the return yield resume
+    // case. Otherwise, the instruction sequence following this call
+    // must handle both the throw and return cases.
+
     auto* writer = byteCodeGenerator->Writer();
 
     if (inputReg != funcInfo->yieldRegister)
@@ -10539,7 +10543,8 @@ void EmitAwait(
 {
     // TODO(zenparsing): [Performance] We should only have to allocate this
     // object once before any awaits. Awaiting should merely set the value
-    // property of that object.
+    // property of that object. If we use a well-known object identity, then
+    // we may not need _internalSymbolIsAwait at all.
 
     auto* writer = byteCodeGenerator->Writer();
     Js::RegSlot yieldReg = funcInfo->yieldRegister;

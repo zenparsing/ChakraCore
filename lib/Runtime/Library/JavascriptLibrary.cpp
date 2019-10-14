@@ -3495,6 +3495,7 @@ namespace Js
         VirtualTableRecorder<Js::ScriptFunction>::RecordVirtualTableAddress(vtableAddresses, VTableValue::VtableScriptFunction);
         VirtualTableRecorder<Js::JavascriptGeneratorFunction>::RecordVirtualTableAddress(vtableAddresses, VTableValue::VtableJavascriptGeneratorFunction);
         VirtualTableRecorder<Js::JavascriptAsyncFunction>::RecordVirtualTableAddress(vtableAddresses, VTableValue::VtableJavascriptAsyncFunction);
+        VirtualTableRecorder<Js::JavascriptAsyncGeneratorFunction>::RecordVirtualTableAddress(vtableAddresses, VTableValue::VtableJavascriptAsyncGeneratorFunction);
 
         // ScriptFunction
         VirtualTableRecorder<Js::FunctionWithComputedName<Js::AsmJsScriptFunction>>::RecordVirtualTableAddress(vtableAddresses, VTableValue::VtableAsmJsScriptFunctionWithComputedName);
@@ -7018,6 +7019,11 @@ namespace Js
         return CreateIteratorResultObject(value, done ? GetTrue() : GetFalse());
     }
 
+    DynamicObject* JavascriptLibrary::CreateIteratorResultObjectDone()
+    {
+        return CreateIteratorResultObject(GetUndefined(), GetTrue());
+    }
+
     JavascriptListIterator* JavascriptLibrary::CreateListIterator(ListForListIterator* list)
     {
         JavascriptListIterator* iterator = RecyclerNew(this->GetRecycler(), JavascriptListIterator, listIteratorType, list);
@@ -7025,18 +7031,6 @@ namespace Js
         AssertOrFailFast(VarIsCorrectType(nextFunction));
         JavascriptOperators::SetProperty(iterator, iterator, PropertyIds::next, nextFunction, GetScriptContext(), PropertyOperation_None);
         return iterator;
-    }
-
-    // TODO(zenparsing): Consider removing these two and replacing uses with
-    // CreateIteratorResultObject(Var value, bool done)
-    DynamicObject* JavascriptLibrary::CreateIteratorResultObjectValueFalse(Var value)
-    {
-        return CreateIteratorResultObject(value, GetFalse());
-    }
-
-    DynamicObject* JavascriptLibrary::CreateIteratorResultObjectUndefinedTrue()
-    {
-        return CreateIteratorResultObject(GetUndefined(), GetTrue());
     }
 
     RecyclableObject* JavascriptLibrary::CreateThrowErrorObject(JavascriptError* error)

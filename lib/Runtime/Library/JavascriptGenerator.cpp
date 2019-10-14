@@ -9,9 +9,6 @@ using namespace Js;
 
 namespace
 {
-    // TODO(zenparsing): The ability to set state directly should remain "internal"
-    // to the generator, but the current SetState api is bothersomely public...
-
     // RAII helper to set the state of the generator to completed if an exception is 
     // thrown or if the save state InterpreterStackFrame is never created implying 
     // the generator is JITed and returned without ever yielding
@@ -111,7 +108,6 @@ JavascriptGenerator* JavascriptGenerator::New(
 template<>
 bool Js::VarIsImpl<JavascriptGenerator>(RecyclableObject* obj)
 {
-    // TODO(zenparsing): This is probably wrong but maybe OK?
     auto typeId = JavascriptOperators::GetTypeId(obj);
     return typeId == TypeIds_Generator || typeId == TypeIds_AsyncGenerator;
 }

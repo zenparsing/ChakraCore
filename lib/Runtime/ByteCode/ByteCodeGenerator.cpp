@@ -4728,16 +4728,18 @@ void CheckFuncAssignment(Symbol * sym, ParseNode * pnode2, ByteCodeGenerator * b
 
 void AssignYieldResumeRegisters(ByteCodeGenerator* byteCodeGenerator)
 {
-    // TODO(zenparsing): Document this
+    // On resuming from a yield, we branch based on the ResumeYieldKind
+    // integer value
     byteCodeGenerator->EnregisterConstant((uint)Js::ResumeYieldKind::Normal);
     byteCodeGenerator->EnregisterConstant((uint)Js::ResumeYieldKind::Throw);
 }
 
 void AssignAwaitRegisters(ByteCodeGenerator* byteCodeGenerator)
 {
-    // TOOD(zenparsing): Document this
-    // The _internalSymbolIsAwait property of the result object is set to true
+    // Yielded await results have an _internalSymbolIsAwait property set to true
     byteCodeGenerator->AssignTrueConstRegister();
+    // On resuming from an await, we branch based on whether the ResumeYieldKind
+    // is normal or throw
     byteCodeGenerator->EnregisterConstant((uint)Js::ResumeYieldKind::Normal);
 }
 

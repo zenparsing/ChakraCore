@@ -48,8 +48,7 @@ class JavascriptAsyncGeneratorFunction : public JavascriptGeneratorFunction
   public:
       virtual VTableValue DummyVirtualFunctionToHinderLinkerICF()
       {
-          // TODO(zenparsing): This looks wrong!
-          return VTableValue::VtableJavascriptAsyncFunction;
+          return VTableValue::VtableJavascriptAsyncGeneratorFunction;
       }
 };
 
