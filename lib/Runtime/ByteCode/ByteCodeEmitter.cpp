@@ -10543,35 +10543,16 @@ void EmitAwait(
 {
     // TODO(zenparsing): [Performance] We should only have to allocate this
     // object once before any awaits. Awaiting should merely set the value
-    // property of that object. If we use a well-known object identity, then
-    // we may not need _internalSymbolIsAwait at all.
+    // property of that object.
 
     auto* writer = byteCodeGenerator->Writer();
-    Js::RegSlot yieldReg = funcInfo->yieldRegister;
-
-    writer->Reg1(Js::OpCode::NewScObjectSimple, yieldReg);
-
-    writer->PatchableProperty(
-        Js::OpCode::StFld,
-        inputReg,
-        yieldReg,
-        funcInfo->FindOrAddInlineCacheId(yieldReg, Js::PropertyIds::value, false, true));
-
-    writer->PatchableProperty(
-        Js::OpCode::StFld,
-        funcInfo->trueConstantRegister,
-        yieldReg,
-        funcInfo->FindOrAddInlineCacheId(
-            yieldReg,
-            Js::PropertyIds::_internalSymbolIsAwait,
-            false,
-            true));
+    writer->Reg2(Js::OpCode::NewAwaitObject, funcInfo->yieldRegister, inputReg);
 
     Js::ByteCodeLabel resumeNormal = writer->DefineLabel();
 
     EmitYieldAndResume(
         resultReg,
-        yieldReg,
+        funcInfo->yieldRegister,
         resumeNormal,
         Js::Constants::NoByteCodeLabel,
         byteCodeGenerator,

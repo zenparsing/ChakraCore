@@ -641,6 +641,8 @@ namespace Js
 
         static Var OP_ResumeYield(ResumeYieldData* yieldData);
 
+        static Var OP_NewAwaitObject(Var value, ScriptContext* scriptContext);
+
         static Var OP_NewAsyncFromSyncIterator(Var syncIterator, ScriptContext* scriptContext);
 
         template <typename T>

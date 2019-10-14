@@ -274,6 +274,7 @@ namespace Js
         Field(DynamicType *) symbolTypeDynamic;
         Field(StaticType *) symbolTypeStatic;
         Field(DynamicType *) iteratorResultType;
+        Field(DynamicType *) internalAwaitObjectType;
         Field(DynamicType *) arrayIteratorType;
         Field(DynamicType *) mapIteratorType;
         Field(DynamicType *) setIteratorType;
@@ -1080,6 +1081,8 @@ namespace Js
         JavascriptListIterator* CreateListIterator(ListForListIterator* list);
 
         JavascriptRegExp* CreateRegExp(UnifiedRegex::RegexPattern* pattern);
+
+        DynamicObject* CreateInternalAwaitObject(Var value);
 
         DynamicObject* CreateIteratorResultObject(Var value, Var done);
         DynamicObject* CreateIteratorResultObject(Var value, bool done = false);

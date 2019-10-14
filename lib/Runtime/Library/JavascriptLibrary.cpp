@@ -717,6 +717,27 @@ namespace Js
         iteratorResultType = DynamicType::New(scriptContext, TypeIds_Object, objectPrototype, nullptr,
             PathTypeHandlerNoAttr::New(scriptContext, iteratorResultPath, iteratorResultPath->GetPathLength(), 2, sizeof(DynamicObject), true, true), true, true);
 
+        auto* awaitObjectPath = TypePath::New(recycler);
+        awaitObjectPath->Add(BuiltInPropertyRecords::value);
+
+        auto* awaitObjectHandler = PathTypeHandlerNoAttr::New(
+            scriptContext,
+            awaitObjectPath,
+            awaitObjectPath->GetPathLength(),
+            1,
+            sizeof(DynamicObject),
+            true,
+            true);
+
+        internalAwaitObjectType = DynamicType::New(
+            scriptContext,
+            TypeIds_AwaitObject,
+            objectPrototype,
+            nullptr,
+            awaitObjectHandler,
+            true,
+            true);
+
         arrayIteratorType = DynamicType::New(scriptContext, TypeIds_ArrayIterator, arrayIteratorPrototype, nullptr,
             PathTypeHandlerNoAttr::New(scriptContext, this->GetRootPath(), 0, 0, 0, true, true), true, true);
         mapIteratorType = DynamicType::New(scriptContext, TypeIds_MapIterator, mapIteratorPrototype, nullptr,
@@ -7002,6 +7023,13 @@ namespace Js
     {
         AssertMsg(stringIteratorType, "Where's stringIteratorType");
         return RecyclerNew(this->GetRecycler(), JavascriptStringIterator, stringIteratorType, string);
+    }
+
+    DynamicObject* JavascriptLibrary::CreateInternalAwaitObject(Var value)
+    {
+        auto* awaitObject = DynamicObject::New(GetRecycler(), internalAwaitObjectType);
+        awaitObject->SetSlot(SetSlotArguments(Js::PropertyIds::value, 0, value));
+        return awaitObject;
     }
 
     DynamicObject* JavascriptLibrary::CreateIteratorResultObject(Var value, Var done)

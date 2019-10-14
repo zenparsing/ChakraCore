@@ -4736,8 +4736,6 @@ void AssignYieldResumeRegisters(ByteCodeGenerator* byteCodeGenerator)
 
 void AssignAwaitRegisters(ByteCodeGenerator* byteCodeGenerator)
 {
-    // Yielded await results have an _internalSymbolIsAwait property set to true
-    byteCodeGenerator->AssignTrueConstRegister();
     // On resuming from an await, we branch based on whether the ResumeYieldKind
     // is normal or throw
     byteCodeGenerator->EnregisterConstant((uint)Js::ResumeYieldKind::Normal);

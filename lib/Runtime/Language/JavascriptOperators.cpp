@@ -10289,6 +10289,13 @@ SetElementIHelper_INDEX_TYPE_IS_NUMBER:
         JIT_HELPER_END(ResumeYield);
     }
 
+    Var JavascriptOperators::OP_NewAwaitObject(Var value, ScriptContext* scriptContext)
+    {
+        JIT_HELPER_NOT_REENTRANT_NOLOCK_HEADER(NewAwaitObject);
+        return scriptContext->GetLibrary()->CreateInternalAwaitObject(value);
+        JIT_HELPER_END(NewAwaitObject);
+    }
+
     Var JavascriptOperators::OP_NewAsyncFromSyncIterator(Var syncIterator, ScriptContext* scriptContext)
     {
         JIT_HELPER_NOT_REENTRANT_NOLOCK_HEADER(NewAsyncFromSyncIterator);

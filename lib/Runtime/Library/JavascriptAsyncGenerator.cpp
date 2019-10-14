@@ -246,18 +246,19 @@ void JavascriptAsyncGenerator::ResumeCoroutine(Var value, ResumeYieldKind resume
         return;
     }
 
+    if (JavascriptOperators::GetTypeId(result) == TypeIds_AwaitObject)
+    {
+        Var awaitValue = VarTo<DynamicObject>(result)->GetSlot(0);
+        UnwrapValue(awaitValue, PendingState::Await);
+        return;
+    }
+
     Var resultValue = JavascriptOperators::GetProperty(
         result,
         PropertyIds::value,
         GetScriptContext());
 
-    if (result->HasOwnProperty(PropertyIds::_internalSymbolIsAwait))
-    {
-        // If the result object has an _internalSymbolIsAwait property, then
-        // we are processing an await expression
-        UnwrapValue(resultValue, PendingState::Await);
-    }
-    else if (IsCompleted())
+    if (IsCompleted())
     {
         // If the generator is completed, then resolve immediately. Return
         // values are unwrapped explicitly by the code generated for the

@@ -2939,6 +2939,15 @@ Lowerer::LowerRange(IR::Instr *instrStart, IR::Instr *instrEnd, bool defaultDoFa
             break;
         }
 
+        case Js::OpCode::NewAwaitObject:
+        {
+            IR::Opnd *src1Opnd = instr->UnlinkSrc1();
+            LoadScriptContext(instr);
+            m_lowererMD.LoadHelperArgument(instr, src1Opnd);
+            m_lowererMD.ChangeToHelperCall(instr, IR::HelperNewAwaitObject);
+            break;
+        }
+
         case Js::OpCode::Yield:
         {
             this->m_lowerGeneratorHelper.LowerYield(instr);

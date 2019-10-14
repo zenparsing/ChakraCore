@@ -224,9 +224,7 @@ void JavascriptAsyncFunction::AsyncSpawnStep(
 
     Assert(result != nullptr);
 
-    Var done = JavascriptOperators::GetProperty(result, PropertyIds::done, scriptContext);
-
-    if (JavascriptConversion::ToBool(done, scriptContext))
+    if (generator->IsCompleted())
     {
         // If the generator is done, resolve the promise
         Var value = JavascriptOperators::GetProperty(result, PropertyIds::value, scriptContext);
@@ -260,7 +258,8 @@ void JavascriptAsyncFunction::AsyncSpawnStep(
         reject,
         true);
 
-    Var value = JavascriptOperators::GetProperty(result, PropertyIds::value, scriptContext);
+    Assert(JavascriptOperators::GetTypeId(result) == TypeIds_AwaitObject);
+    Var value = VarTo<DynamicObject>(result)->GetSlot(0);
     auto* promise = JavascriptPromise::InternalPromiseResolve(value, scriptContext);
     auto* unused = JavascriptPromise::UnusedPromiseCapability(scriptContext);
     
