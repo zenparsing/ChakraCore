@@ -738,6 +738,28 @@ namespace Js
             true,
             true);
 
+        auto* resumeObjectPath = TypePath::New(recycler);
+        resumeObjectPath->Add(BuiltInPropertyRecords::value);
+        resumeObjectPath->Add(BuiltInPropertyRecords::kind);
+
+        auto* resumeObjectHandler = PathTypeHandlerNoAttr::New(
+            scriptContext,
+            resumeObjectPath,
+            resumeObjectPath->GetPathLength(),
+            2,
+            sizeof(DynamicObject),
+            true,
+            true);
+
+        internalResumeYieldObjectType = DynamicType::New(
+            scriptContext,
+            TypeIds_Object,
+            objectPrototype,
+            nullptr,
+            resumeObjectHandler,
+            true,
+            true);
+
         arrayIteratorType = DynamicType::New(scriptContext, TypeIds_ArrayIterator, arrayIteratorPrototype, nullptr,
             PathTypeHandlerNoAttr::New(scriptContext, this->GetRootPath(), 0, 0, 0, true, true), true, true);
         mapIteratorType = DynamicType::New(scriptContext, TypeIds_MapIterator, mapIteratorPrototype, nullptr,
@@ -7030,6 +7052,15 @@ namespace Js
         auto* awaitObject = DynamicObject::New(GetRecycler(), internalAwaitObjectType);
         awaitObject->SetSlot(SetSlotArguments(Js::PropertyIds::value, 0, value));
         return awaitObject;
+    }
+
+    DynamicObject* JavascriptLibrary::CreateInternalResumeYieldObject(ResumeYieldData* resumeData)
+    {
+        Var kindVar = TaggedInt::ToVarUnchecked((int)resumeData->kind);
+        auto* resumeObject = DynamicObject::New(GetRecycler(), internalResumeYieldObjectType);
+        resumeObject->SetSlot(SetSlotArguments(Js::PropertyIds::value, 0, resumeData->data));
+        resumeObject->SetSlot(SetSlotArguments(Js::PropertyIds::kind, 1, kindVar));
+        return resumeObject;
     }
 
     DynamicObject* JavascriptLibrary::CreateIteratorResultObject(Var value, Var done)

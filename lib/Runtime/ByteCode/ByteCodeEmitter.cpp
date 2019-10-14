@@ -10640,7 +10640,7 @@ void EmitYieldStar(
     // Initialize shouldReturn to false; this flag is used to indicate
     // whether we should return or continue after the loop is complete
     Js::RegSlot shouldReturnReg = funcInfo->AcquireTmpRegister();
-    writer->Reg2(Js::OpCode::Ld_A, shouldReturnReg, funcInfo->falseConstantRegister);
+    writer->Reg1(Js::OpCode::LdFalse_ReuseLoc, shouldReturnReg);
 
     // Evaluate operand and get the inner iterator
     Js::RegSlot iteratorReg = funcInfo->AcquireTmpRegister();
@@ -10694,7 +10694,7 @@ void EmitYieldStar(
     funcInfo->ReleaseTmpRegister(doneReg);
 
     // Reset shouldReturn to false
-    writer->Reg2(Js::OpCode::Ld_A, shouldReturnReg, funcInfo->falseConstantRegister);
+    writer->Reg1(Js::OpCode::LdFalse_ReuseLoc, shouldReturnReg);
 
     Js::ByteCodeLabel resumeNormal = writer->DefineLabel();
     Js::ByteCodeLabel resumeThrow = writer->DefineLabel();
@@ -10729,7 +10729,7 @@ void EmitYieldStar(
         funcInfo);
 
     // Return case: set shouldReturn to true and attempt to call return
-    writer->Reg2(Js::OpCode::Ld_A, shouldReturnReg, funcInfo->trueConstantRegister);
+    writer->Reg1(Js::OpCode::LdTrue_ReuseLoc, shouldReturnReg);
 
     Js::RegSlot returnMethodReg = funcInfo->AcquireTmpRegister();
 

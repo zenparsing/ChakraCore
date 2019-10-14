@@ -10271,21 +10271,12 @@ SetElementIHelper_INDEX_TYPE_IS_NUMBER:
 
     Var JavascriptOperators::OP_ResumeYield(ResumeYieldData* yieldData)
     {
-        JIT_HELPER_NOT_REENTRANT_NOLOCK_HEADER(ResumeYield);
-
-        auto* scriptContext = yieldData->scriptContext;
-
         // TODO(zenparsing): [Performance] how can we optimize the general 
         // case so that we aren't allocating a new object for every resume?
         // Also, if we already have a Var pointer, can we lower this helper
         // out?
-
-        auto* resultObj = scriptContext->GetLibrary()->CreateObject(true, 2);
-        Var kindVar = TaggedInt::ToVarUnchecked((int)yieldData->kind);
-        JavascriptOperators::InitProperty(resultObj, PropertyIds::value, yieldData->data);
-        JavascriptOperators::InitProperty(resultObj, PropertyIds::kind, kindVar);
-        return resultObj;
-
+        JIT_HELPER_NOT_REENTRANT_NOLOCK_HEADER(ResumeYield);
+        return yieldData->scriptContext->GetLibrary()->CreateInternalResumeYieldObject(yieldData);
         JIT_HELPER_END(ResumeYield);
     }
 
