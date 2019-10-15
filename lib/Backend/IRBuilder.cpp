@@ -1892,8 +1892,6 @@ IRBuilder::BuildReg2(Js::OpCode newOpcode, uint32 offset, Js::RegSlot R0, Js::Re
         IR::Instr* resumeYield = IR::Instr::New(Js::OpCode::GeneratorResumeYield, dstOpnd, m_func);
         this->AddInstr(resumeYield, offset);
 
-        // TODO(zenparsing): Not sure where this particular bailout should point to. Don't
-        // we always restore yieldRegister correctly on bailout? How can we test this?
         if (this->m_func->IsJitInDebugMode())
         {
             this->InsertBailOutForDebugger(offset, IR::BailOutForceByFlag | IR::BailOutBreakPointInFunction | IR::BailOutStep);

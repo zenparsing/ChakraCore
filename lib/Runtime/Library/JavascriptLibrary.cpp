@@ -7037,15 +7037,12 @@ namespace Js
         return awaitObject;
     }
 
-    DynamicObject* JavascriptLibrary::CreateInternalResumeYieldObject(
-        Var value,
-        ResumeYieldKind kind)
+    DynamicObject* JavascriptLibrary::CreateInternalResumeYieldObject()
     {
-        Var kindVar = TaggedInt::ToVarUnchecked((int)kind);
-        auto* resumeObject = DynamicObject::New(GetRecycler(), resumeYieldObjectType);
-        resumeObject->SetSlot(SetSlotArguments(Js::PropertyIds::value, 0, value));
-        resumeObject->SetSlot(SetSlotArguments(Js::PropertyIds::kind, 1, kindVar));
-        return resumeObject;
+        auto* obj = DynamicObject::New(GetRecycler(), resumeYieldObjectType);
+        obj->SetSlot(SetSlotArguments(Js::PropertyIds::value, 0, GetUndefined()));
+        obj->SetSlot(SetSlotArguments(Js::PropertyIds::kind, 1, TaggedInt::ToVarUnchecked(0)));
+        return obj;
     }
 
     DynamicObject* JavascriptLibrary::CreateIteratorResultObject(Var value, Var done)

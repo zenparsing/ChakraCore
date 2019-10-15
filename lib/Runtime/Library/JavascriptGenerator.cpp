@@ -59,8 +59,10 @@ JavascriptGenerator::JavascriptGenerator(
         args(args),
         frame(nullptr),
         state(GeneratorState::SuspendedStart),
-        scriptFunction(scriptFunction),
-        resumeYieldObject(nullptr) {}
+        scriptFunction(scriptFunction)
+{
+    this->resumeYieldObject = GetScriptContext()->GetLibrary()->CreateInternalResumeYieldObject();
+}
 
 JavascriptGenerator* JavascriptGenerator::New(
     Recycler* recycler,
@@ -167,20 +169,11 @@ Var JavascriptGenerator::CallGenerator(Var data, ResumeYieldKind resumeKind)
 
     ScriptContext* scriptContext = this->GetScriptContext();
     JavascriptLibrary* library = scriptContext->GetLibrary();
+    Var kindVar = TaggedInt::ToVarUnchecked((int)resumeKind);
     Var result = nullptr;
 
-    if (!this->resumeYieldObject)
-    {
-        this->resumeYieldObject = library->CreateInternalResumeYieldObject(data, resumeKind);
-    }
-    else
-    {
-        // TODO(zenparsing): This knowledge should be encapsulated in one place. Where
-        // should it be?
-        Var kindVar = TaggedInt::ToVarUnchecked((int)resumeKind);
-        this->resumeYieldObject->SetSlot(SetSlotArguments(Js::PropertyIds::value, 0, data));
-        this->resumeYieldObject->SetSlot(SetSlotArguments(Js::PropertyIds::kind, 1, kindVar));
-    }
+    this->resumeYieldObject->SetSlot(SetSlotArguments(Js::PropertyIds::value, 0, data));
+    this->resumeYieldObject->SetSlot(SetSlotArguments(Js::PropertyIds::kind, 1, kindVar));
 
     {
         Var thunkArgs[] = {this, this->resumeYieldObject};
@@ -204,6 +197,11 @@ Var JavascriptGenerator::CallGenerator(Var data, ResumeYieldKind resumeKind)
             JavascriptExceptionOperators::DoThrowCheckClone(err.GetAndClear(), scriptContext);
         }
     }
+
+    // Clear the value property of the resume yield object so that we don't
+    // extend the lifetime of the value
+    this->resumeYieldObject->SetSlot(
+        SetSlotArguments(Js::PropertyIds::value, 0, library->GetUndefined()));
 
     if (IsCompleted())
         return library->CreateIteratorResultObject(result, library->GetTrue());

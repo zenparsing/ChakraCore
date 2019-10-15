@@ -3000,15 +3000,6 @@ void ByteCodeGenerator::EmitOneFunction(ParseNodeFnc *pnodeFnc)
             }
         }
 
-        // If the function has non simple parameter list, the params needs to be evaluated when the generator object is created
-        // (that is when the function is called). This yield opcode is to mark the  begining of the function body.
-        // TODO: Inserting a yield should have almost no impact on perf as it is a direct return from the function. But this needs
-        // to be verified. Ideally if the function has simple parameter list then we can avoid inserting the opcode and the additional call.
-        if (pnodeFnc->IsGenerator() && !pnodeFnc->IsModule())
-        {
-            EmitStartupYield(this, funcInfo);
-        }
-
         DefineUserVars(funcInfo);
 
         // Emit all scope-wide function definitions before emitting function bodies
@@ -3022,8 +3013,11 @@ void ByteCodeGenerator::EmitOneFunction(ParseNodeFnc *pnodeFnc)
             DefineFunctions(funcInfo);
         }
 
-        // insert a yield at the top of a module body so that function definitions can be hoisted accross modules
-        if (pnodeFnc->IsModule())
+        // If the function has non simple parameter list, the params needs to be evaluated when the generator object is created
+        // (that is when the function is called). This yield opcode is to mark the  begining of the function body.
+        // TODO: Inserting a yield should have almost no impact on perf as it is a direct return from the function. But this needs
+        // to be verified. Ideally if the function has simple parameter list then we can avoid inserting the opcode and the additional call.
+        if (pnodeFnc->IsGenerator())
         {
             EmitStartupYield(this, funcInfo);
         }

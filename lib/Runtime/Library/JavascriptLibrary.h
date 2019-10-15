@@ -1083,7 +1083,7 @@ namespace Js
         JavascriptRegExp* CreateRegExp(UnifiedRegex::RegexPattern* pattern);
 
         DynamicObject* CreateInternalAwaitObject(Var value);
-        DynamicObject* CreateInternalResumeYieldObject(Var value, ResumeYieldKind kind);
+        DynamicObject* CreateInternalResumeYieldObject();
 
         DynamicObject* CreateIteratorResultObject(Var value, Var done);
         DynamicObject* CreateIteratorResultObject(Var value, bool done = false);
