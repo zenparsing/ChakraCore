@@ -175,7 +175,8 @@ Var JavascriptGenerator::CallGenerator(Var data, ResumeYieldKind resumeKind)
     }
     else
     {
-        // TODO(zenparsing): This SetSlot stuff should be centralized in one place
+        // TODO(zenparsing): This knowledge should be encapsulated in one place. Where
+        // should it be?
         Var kindVar = TaggedInt::ToVarUnchecked((int)resumeKind);
         this->resumeYieldObject->SetSlot(SetSlotArguments(Js::PropertyIds::value, 0, data));
         this->resumeYieldObject->SetSlot(SetSlotArguments(Js::PropertyIds::kind, 1, kindVar));

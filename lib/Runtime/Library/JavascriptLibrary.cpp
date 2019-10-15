@@ -717,6 +717,7 @@ namespace Js
         iteratorResultType = DynamicType::New(scriptContext, TypeIds_Object, objectPrototype, nullptr,
             PathTypeHandlerNoAttr::New(scriptContext, iteratorResultPath, iteratorResultPath->GetPathLength(), 2, sizeof(DynamicObject), true, true), true, true);
 
+        // Create await object type
         auto* awaitObjectPath = TypePath::New(recycler);
         awaitObjectPath->Add(BuiltInPropertyRecords::value);
 
@@ -729,7 +730,7 @@ namespace Js
             true,
             true);
 
-        internalAwaitObjectType = DynamicType::New(
+        awaitObjectType = DynamicType::New(
             scriptContext,
             TypeIds_AwaitObject,
             objectPrototype,
@@ -738,6 +739,7 @@ namespace Js
             true,
             true);
 
+        // Create yield resume object type
         auto* resumeObjectPath = TypePath::New(recycler);
         resumeObjectPath->Add(BuiltInPropertyRecords::value);
         resumeObjectPath->Add(BuiltInPropertyRecords::kind);
@@ -751,7 +753,7 @@ namespace Js
             true,
             true);
 
-        internalResumeYieldObjectType = DynamicType::New(
+        resumeYieldObjectType = DynamicType::New(
             scriptContext,
             TypeIds_Object,
             objectPrototype,
@@ -7030,7 +7032,7 @@ namespace Js
 
     DynamicObject* JavascriptLibrary::CreateInternalAwaitObject(Var value)
     {
-        auto* awaitObject = DynamicObject::New(GetRecycler(), internalAwaitObjectType);
+        auto* awaitObject = DynamicObject::New(GetRecycler(), awaitObjectType);
         awaitObject->SetSlot(SetSlotArguments(Js::PropertyIds::value, 0, value));
         return awaitObject;
     }
@@ -7040,7 +7042,7 @@ namespace Js
         ResumeYieldKind kind)
     {
         Var kindVar = TaggedInt::ToVarUnchecked((int)kind);
-        auto* resumeObject = DynamicObject::New(GetRecycler(), internalResumeYieldObjectType);
+        auto* resumeObject = DynamicObject::New(GetRecycler(), resumeYieldObjectType);
         resumeObject->SetSlot(SetSlotArguments(Js::PropertyIds::value, 0, value));
         resumeObject->SetSlot(SetSlotArguments(Js::PropertyIds::kind, 1, kindVar));
         return resumeObject;

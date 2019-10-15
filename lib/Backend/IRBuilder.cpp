@@ -1864,21 +1864,6 @@ IRBuilder::BuildReg2(Js::OpCode newOpcode, uint32 offset, Js::RegSlot R0, Js::Re
         dstOpnd->SetValueType(ValueType::String);
         break;
 
-    case Js::OpCode::ResumeYield:
-    {
-        IR::Instr* loadResumeYieldData = IR::Instr::New(Js::OpCode::GeneratorLoadResumeYieldData, src1Opnd /* dst */, m_func);
-        this->AddInstr(loadResumeYieldData, offset);
-
-        // Insert bailout for debugger, since we are bailing out to the ResumeYield instruction (OP_ResumeYield) in the interpreter,
-        // we have to load the ResumeYieldData first
-        if (this->m_func->IsJitInDebugMode())
-        {
-            this->InsertBailOutForDebugger(offset, IR::BailOutForceByFlag | IR::BailOutBreakPointInFunction | IR::BailOutStep);
-        }
-
-        break;
-    }
-
     case Js::OpCode::Yield:
         instr = IR::Instr::New(newOpcode, dstOpnd, src1Opnd, m_func);
         this->AddInstr(instr, offset);
@@ -1904,13 +1889,15 @@ IRBuilder::BuildReg2(Js::OpCode newOpcode, uint32 offset, Js::RegSlot R0, Js::Re
         }
 #endif
 
-        // This label indicates the section where we start loading the ResumeYieldData on the stack
-        // that comes from either .next(), .return(), or .throw() to the right symbol and finally
-        // extract its data through Op_ResumeYield
-        IR::LabelInstr* resumptionLabel = IR::LabelInstr::New(Js::OpCode::GeneratorResumeYieldLabel, m_func);
-        resumptionLabel->m_hasNonBranchRef = true;          // set to true so that we don't move this label around
-        LABELNAMESET(resumptionLabel, "ResumeYieldHelperLabel");
-        this->AddInstr(resumptionLabel, offset);
+        IR::Instr* resumeYield = IR::Instr::New(Js::OpCode::GeneratorResumeYield, dstOpnd, m_func);
+        this->AddInstr(resumeYield, offset);
+
+        // TODO(zenparsing): Not sure where this particular bailout should point to. Don't
+        // we always restore yieldRegister correctly on bailout? How can we test this?
+        if (this->m_func->IsJitInDebugMode())
+        {
+            this->InsertBailOutForDebugger(offset, IR::BailOutForceByFlag | IR::BailOutBreakPointInFunction | IR::BailOutStep);
+        }
 
         return;
     }

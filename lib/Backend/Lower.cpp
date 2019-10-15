@@ -2954,15 +2954,9 @@ Lowerer::LowerRange(IR::Instr *instrStart, IR::Instr *instrEnd, bool defaultDoFa
             break;
         }
 
-        case Js::OpCode::GeneratorLoadResumeYieldData:
+        case Js::OpCode::GeneratorResumeYield:
         {
-            this->m_lowerGeneratorHelper.LowerGeneratorLoadResumeYieldData(instr);
-            break;
-        }
-
-        case Js::OpCode::ResumeYield:
-        {
-            this->m_lowerGeneratorHelper.LowerResumeGenerator(instr);
+            this->m_lowerGeneratorHelper.LowerGeneratorResumeYield(instr);
             break;
         }
 
@@ -3092,7 +3086,6 @@ Lowerer::LowerRange(IR::Instr *instrStart, IR::Instr *instrEnd, bool defaultDoFa
         case Js::OpCode::GeneratorOutputBailInTraceLabel:
 #endif
         case Js::OpCode::GeneratorBailInLabel:
-        case Js::OpCode::GeneratorResumeYieldLabel:
         case Js::OpCode::GeneratorEpilogueFrameNullOutLabel:
         case Js::OpCode::GeneratorEpilogueNoFrameNullOutLabel:
             Assert(this->m_func->GetJITFunctionBody()->IsCoroutine());
@@ -26448,7 +26441,6 @@ Lowerer::ValidOpcodeAfterLower(IR::Instr* instr, Func * func)
     case Js::OpCode::GeneratorOutputBailInTraceLabel:
 #endif
     case Js::OpCode::GeneratorBailInLabel:
-    case Js::OpCode::GeneratorResumeYieldLabel:
     case Js::OpCode::GeneratorEpilogueFrameNullOutLabel:
     case Js::OpCode::GeneratorEpilogueNoFrameNullOutLabel:
         return func->GetJITFunctionBody()->IsCoroutine();
@@ -29199,7 +29191,7 @@ Lowerer::LowerGeneratorHelper::LowerGeneratorTraceBailIn(IR::Instr* instr)
 #endif
 
 IR::SymOpnd*
-Lowerer::LowerGeneratorHelper::CreateResumeYieldDataOpnd() const
+Lowerer::LowerGeneratorHelper::CreateResumeYieldOpnd() const
 {
     StackSym* resumeYieldDataSym = StackSym::NewImplicitParamSym(4, this->func);
     this->func->SetArgOffset(resumeYieldDataSym, (LowererMD::GetFormalParamOffset() + 1) * MachPtr);
@@ -29207,21 +29199,13 @@ Lowerer::LowerGeneratorHelper::CreateResumeYieldDataOpnd() const
 }
 
 void
-Lowerer::LowerGeneratorHelper::LowerGeneratorLoadResumeYieldData(IR::Instr* instr)
+Lowerer::LowerGeneratorHelper::LowerGeneratorResumeYield(IR::Instr* instr)
 {
-    // prm2 is the ResumeYieldData pointer per calling convention established in JavascriptGenerator::CallGenerator
+    // prm2 is the resume yield object var per calling convention established in JavascriptGenerator::CallGenerator
     // This is the value the bytecode expects to be in the dst register of the Yield opcode after resumption.
     // Load it here after the bail-in.
-    this->lowerer->InsertMove(instr->UnlinkDst(), this->CreateResumeYieldDataOpnd(), instr);
+    this->lowerer->InsertMove(instr->UnlinkDst(), this->CreateResumeYieldOpnd(), instr);
     instr->Unlink();
-}
-
-void
-Lowerer::LowerGeneratorHelper::LowerResumeGenerator(IR::Instr* instr)
-{
-    IR::Opnd* srcOpnd1 = instr->UnlinkSrc1();
-    this->lowererMD.LoadHelperArgument(instr, srcOpnd1);
-    this->lowererMD.ChangeToHelperCall(instr, IR::HelperResumeYield);
 }
 
 void

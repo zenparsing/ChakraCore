@@ -6,7 +6,7 @@
 
 namespace Js
 {
-  
+
 class JavascriptAsyncFunction : public JavascriptGeneratorFunction
 {
 private:

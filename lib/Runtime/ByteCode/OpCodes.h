@@ -234,7 +234,6 @@ MACRO_BACKEND_ONLY(     EHThrow,            Reg1,           OpSideEffect|OpPostO
 MACRO_WMS(              Throw,              Reg1,           OpSideEffect|OpNoFallThrough|OpPostOpDbgBailOut)    // Throw exception
 MACRO(                  Ret,                Empty,          OpSideEffect|OpUseAllFields|OpNoFallThrough)        // Return from function
 MACRO_WMS(              Yield,              Reg2,           OpSideEffect|OpUseAllFields)                        // Yield from generator function
-MACRO_WMS(              ResumeYield,        Reg2,           OpSideEffect)                                       // Load a yield resume object
 
 // Unary operations
 MACRO_WMS(              Incr_A,             Reg2,           OpTempNumberProducing|OpOpndHasImplicitCall|OpDoNotTransfer|OpTempNumberSources|OpTempObjectSources|OpCanCSE|OpPostOpDbgBailOut|OpProducesNumber)     // Increment
@@ -863,11 +862,10 @@ MACRO_BACKEND_ONLY(LazyBailOutThunkLabel, Empty, None)
 // Jitting Generator
 MACRO_BACKEND_ONLY(GeneratorResumeJumpTable,                Reg1,   OpSideEffect) // OpSideEffect because we don't want this to be deadstored
 MACRO_BACKEND_ONLY(GeneratorCreateInterpreterStackFrame,    Reg1,   OpSideEffect) // OpSideEffect because we don't want this to be deadstored
-MACRO_BACKEND_ONLY(GeneratorLoadResumeYieldData,            Reg1,   OpSideEffect) // OpSideEffect because we don't want this to be deadstored
+MACRO_BACKEND_ONLY(GeneratorResumeYield,                    Reg1,   OpSideEffect) // OpSideEffect because we don't want this to be deadstored
 MACRO_BACKEND_ONLY(GeneratorOutputBailInTrace,              Empty,  OpSideEffect) // OpSideEffect because we don't want this to be deadstored
 MACRO_BACKEND_ONLY(GeneratorOutputBailInTraceLabel,         Empty,  None)
 MACRO_BACKEND_ONLY(GeneratorBailInLabel,                    Empty,  None)
-MACRO_BACKEND_ONLY(GeneratorResumeYieldLabel,               Empty,  None)
 MACRO_BACKEND_ONLY(GeneratorEpilogueFrameNullOutLabel,      Empty,  None)
 MACRO_BACKEND_ONLY(GeneratorEpilogueNoFrameNullOutLabel,    Empty,  None)
 

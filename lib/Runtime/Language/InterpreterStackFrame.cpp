@@ -9466,12 +9466,6 @@ skipThunk:
         return (void*)m_inSlotsCount;
     }
 
-    Var InterpreterStackFrame::OP_ResumeYield(Var yieldResumeObject)
-    {
-        // TODO(zenparsing): No-op!
-        return JavascriptOperators::OP_ResumeYield(yieldResumeObject);
-    }
-
     void* InterpreterStackFrame::operator new(size_t byteSize, void* previousAllocation) throw()
     {
         //

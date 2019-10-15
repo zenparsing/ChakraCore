@@ -274,8 +274,8 @@ namespace Js
         Field(DynamicType *) symbolTypeDynamic;
         Field(StaticType *) symbolTypeStatic;
         Field(DynamicType *) iteratorResultType;
-        Field(DynamicType *) internalAwaitObjectType;
-        Field(DynamicType *) internalResumeYieldObjectType;
+        Field(DynamicType *) awaitObjectType;
+        Field(DynamicType *) resumeYieldObjectType;
         Field(DynamicType *) arrayIteratorType;
         Field(DynamicType *) mapIteratorType;
         Field(DynamicType *) setIteratorType;

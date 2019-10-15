@@ -10269,15 +10269,6 @@ SetElementIHelper_INDEX_TYPE_IS_NUMBER:
         JIT_HELPER_END(ImportCall);
     }
 
-    Var JavascriptOperators::OP_ResumeYield(Var resumeYieldObject)
-    {
-        // TODO(zenparsing): This is now a no-op in the interpreter. Should
-        // this be converted to an empty op code for the backend now?
-        JIT_HELPER_NOT_REENTRANT_NOLOCK_HEADER(ResumeYield);
-        return resumeYieldObject;
-        JIT_HELPER_END(ResumeYield);
-    }
-
     Var JavascriptOperators::OP_NewAwaitObject(Var value, ScriptContext* scriptContext)
     {
         JIT_HELPER_NOT_REENTRANT_NOLOCK_HEADER(NewAwaitObject);

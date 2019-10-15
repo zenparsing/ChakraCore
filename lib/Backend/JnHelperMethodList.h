@@ -535,8 +535,6 @@ HELPERCALLCHK(LdImportMeta,             Js::JavascriptOperators::OP_LdImportMeta
 HELPERCALLCHK(NewAsyncFromSyncIterator, Js::JavascriptOperators::OP_NewAsyncFromSyncIterator, AttrCanNotBeReentrant)
 HELPERCALLCHK(NewAwaitObject,           Js::JavascriptOperators::OP_NewAwaitObject, AttrCanNotBeReentrant)
 
-HELPERCALLCHK(ResumeYield,              Js::JavascriptOperators::OP_ResumeYield, AttrCanThrow|AttrCanNotBeReentrant)
-
 HELPERCALL(CreateInterpreterStackFrameForGenerator, Js::InterpreterStackFrame::CreateInterpreterStackFrameForGenerator, AttrCanNotBeReentrant)
 
 #ifdef ENABLE_DEBUG_CONFIG_OPTIONS

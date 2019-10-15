@@ -10455,20 +10455,17 @@ void EmitYieldAndResume(
     if (inputReg != funcInfo->yieldRegister)
         writer->Reg2(Js::OpCode::Ld_A, funcInfo->yieldRegister, inputReg);
 
+    // Yield the result. On resume, the resume yield object will be in yieldRegister
     byteCodeGenerator->EmitLeaveOpCodesBeforeYield();
     writer->Reg2(Js::OpCode::Yield, funcInfo->yieldRegister, funcInfo->yieldRegister);
     byteCodeGenerator->EmitTryBlockHeadersAfterYield();
 
     Js::RegSlot resumeKindReg = funcInfo->AcquireTmpRegister();
-    Js::RegSlot resumeObjectReg = funcInfo->AcquireTmpRegister();
-
-    // Get a resume yield object with "kind" and "value" properties
-    writer->Reg2(Js::OpCode::ResumeYield, resumeObjectReg, funcInfo->yieldRegister);
 
     // Get the "kind" property of the resume object
     EmitGetObjectProperty(
         resumeKindReg,
-        resumeObjectReg,
+        funcInfo->yieldRegister,
         Js::PropertyIds::kind,
         byteCodeGenerator,
         funcInfo);
@@ -10476,12 +10473,10 @@ void EmitYieldAndResume(
     // Get the "value" property of the resume object
     EmitGetObjectProperty(
         resumeValueReg,
-        resumeObjectReg,
+        funcInfo->yieldRegister,
         Js::PropertyIds::value,
         byteCodeGenerator,
         funcInfo);
-
-    funcInfo->ReleaseTmpRegister(resumeObjectReg);
 
     Js::RegSlot normalConst = funcInfo->constantToRegister.Lookup(
         (uint)Js::ResumeYieldKind::Normal,
@@ -10528,11 +10523,8 @@ void EmitStartupYield(ByteCodeGenerator* byteCodeGenerator, FuncInfo* funcInfo)
     // within a try scope.
     Assert(!byteCodeGenerator->HasJumpCleanup());
     auto* writer = byteCodeGenerator->Writer();
-    Js::RegSlot unusedResult = funcInfo->AcquireTmpRegister();
     writer->Reg1(Js::OpCode::LdUndef, funcInfo->yieldRegister);
     writer->Reg2(Js::OpCode::Yield, funcInfo->yieldRegister, funcInfo->yieldRegister);
-    writer->Reg2(Js::OpCode::ResumeYield, unusedResult, funcInfo->yieldRegister);
-    funcInfo->ReleaseTmpRegister(unusedResult);
 }
 
 void EmitAwait(
