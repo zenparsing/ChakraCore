@@ -59,7 +59,8 @@ JavascriptGenerator::JavascriptGenerator(
         args(args),
         frame(nullptr),
         state(GeneratorState::SuspendedStart),
-        scriptFunction(scriptFunction) {}
+        scriptFunction(scriptFunction),
+        resumeYieldObject(nullptr) {}
 
 JavascriptGenerator* JavascriptGenerator::New(
     Recycler* recycler,
@@ -168,9 +169,20 @@ Var JavascriptGenerator::CallGenerator(Var data, ResumeYieldKind resumeKind)
     JavascriptLibrary* library = scriptContext->GetLibrary();
     Var result = nullptr;
 
+    if (!this->resumeYieldObject)
     {
-        ResumeYieldData yieldData(scriptContext, data, resumeKind);
-        Var thunkArgs[] = { this, &yieldData };
+        this->resumeYieldObject = library->CreateInternalResumeYieldObject(data, resumeKind);
+    }
+    else
+    {
+        // TODO(zenparsing): This SetSlot stuff should be centralized in one place
+        Var kindVar = TaggedInt::ToVarUnchecked((int)resumeKind);
+        this->resumeYieldObject->SetSlot(SetSlotArguments(Js::PropertyIds::value, 0, data));
+        this->resumeYieldObject->SetSlot(SetSlotArguments(Js::PropertyIds::kind, 1, kindVar));
+    }
+
+    {
+        Var thunkArgs[] = {this, this->resumeYieldObject};
         Arguments arguments(_countof(thunkArgs), thunkArgs);
         GeneratorStateHelper helper(this);
 

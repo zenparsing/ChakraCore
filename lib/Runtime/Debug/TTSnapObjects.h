@@ -1174,22 +1174,6 @@ namespace TTD
         void AssertSnapEquiv_SnapAsyncFunction(const SnapObject* sobj1, const SnapObject* sobj2, TTDCompareMap& compareMap);
 #endif
 
-        //////////
-        struct SnapJavascriptAsyncSpawnExecutorFunctionInfo
-        {
-            TTD_PTR_ID generator;
-            TTDVar target;
-        };
-
-        Js::RecyclableObject *DoObjectInflation_SnapJavascriptAsyncSpawnExecutorFunction(const SnapObject *snpObject, InflateMap *inflator);
-        void DoAddtlValueInstantiation_SnapJavascriptAsyncSpawnExecutorFunction(const SnapObject* snpObject, Js::RecyclableObject* obj, InflateMap* inflator);
-        void EmitAddtlInfo_SnapJavascriptAsyncSpawnExecutorFunction(const SnapObject* snpObject, FileWriter* writer);
-        void ParseAddtlInfo_SnapJavascriptAsyncSpawnExecutorFunction(SnapObject* snpObject, FileReader* reader, SlabAllocator& alloc);
-#if ENABLE_SNAPSHOT_COMPARE
-        void AssertSnapEquiv_SnapJavascriptAsyncSpawnExecutorFunction(const SnapObject* sobj1, const SnapObject* sobj2, TTDCompareMap& compareMap);
-#endif
-       //////////
-
         struct SnapJavascriptAsyncSpawnStepFunctionInfo
         {
             TTD_PTR_ID generator;

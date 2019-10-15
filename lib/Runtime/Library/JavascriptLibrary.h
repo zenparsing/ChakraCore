@@ -1025,7 +1025,6 @@ namespace Js
         AsyncGeneratorCallbackFunction* CreateAsyncGeneratorCallbackFunction(JavascriptMethod entryPoint, JavascriptAsyncGenerator* generator);
         JavascriptAsyncFunction* CreateAsyncFunction(JavascriptMethod entryPoint, GeneratorVirtualScriptFunction* scriptFunction);
         JavascriptAsyncFunction* CreateAsyncFunction(JavascriptMethod entryPoint, bool isAnonymousFunction);
-        JavascriptAsyncSpawnExecutorFunction* CreateAsyncSpawnExecutorFunction(JavascriptGenerator* generator, Var target);
         JavascriptAsyncSpawnStepFunction* CreateAsyncSpawnStepFunction(JavascriptMethod entryPoint, JavascriptGenerator* generator, Var argument, Var resolve = nullptr, Var reject = nullptr, bool isReject = false);
         JavascriptExternalFunction* CreateExternalFunction(ExternalMethod entryPointer, PropertyId nameId, Var signature, UINT64 flags, bool isLengthAvailable = false);
         JavascriptExternalFunction* CreateExternalFunction(ExternalMethod entryPointer, Var nameId, Var signature, UINT64 flags, bool isLengthAvailable = false);
@@ -1084,7 +1083,7 @@ namespace Js
         JavascriptRegExp* CreateRegExp(UnifiedRegex::RegexPattern* pattern);
 
         DynamicObject* CreateInternalAwaitObject(Var value);
-        DynamicObject* CreateInternalResumeYieldObject(ResumeYieldData* resumeData);
+        DynamicObject* CreateInternalResumeYieldObject(Var value, ResumeYieldKind kind);
 
         DynamicObject* CreateIteratorResultObject(Var value, Var done);
         DynamicObject* CreateIteratorResultObject(Var value, bool done = false);

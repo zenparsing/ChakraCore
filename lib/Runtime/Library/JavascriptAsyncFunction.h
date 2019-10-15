@@ -73,35 +73,6 @@ private:
 template<>
 bool VarIsImpl<JavascriptAsyncFunction>(RecyclableObject* obj);
 
-class JavascriptAsyncSpawnExecutorFunction : public RuntimeFunction
-{
-protected:
-    DEFINE_VTABLE_CTOR(JavascriptAsyncSpawnExecutorFunction, RuntimeFunction);
-    DEFINE_MARSHAL_OBJECT_TO_SCRIPT_CONTEXT(JavascriptAsyncSpawnExecutorFunction);
-
-public:
-    JavascriptAsyncSpawnExecutorFunction(
-        DynamicType* type,
-        FunctionInfo* functionInfo,
-        JavascriptGenerator* generator,
-        Var target) :
-            RuntimeFunction(type, functionInfo),
-            generator(generator),
-            target(target) {}
-
-    Field(JavascriptGenerator*) generator;
-    Field(Var) target;
-
-#if ENABLE_TTD
-    virtual void MarkVisitKindSpecificPtrs(TTD::SnapshotExtractor* extractor) override;
-    virtual TTD::NSSnapObjects::SnapObjectType GetSnapTag_TTD() const override;
-    virtual void ExtractSnapObjectDataInto(TTD::NSSnapObjects::SnapObject* objData, TTD::SlabAllocator& alloc) override;
-#endif
-};
-
-template<>
-bool VarIsImpl<JavascriptAsyncSpawnExecutorFunction>(RecyclableObject* obj);
-
 class JavascriptAsyncSpawnStepFunction : public RuntimeFunction
 {
 protected:

@@ -363,12 +363,6 @@ namespace TTD
             &NSSnapObjects::DoAddtlValueInstantiation_SnapGeneratorInfo,
             &NSSnapObjects::EmitAddtlInfo_SnapGeneratorInfo,
             &NSSnapObjects::ParseAddtlInfo_SnapGeneratorInfo };
-        this->m_snapObjectVTableArray[(uint32)NSSnapObjects::SnapObjectType::JavascriptAsyncSpawnExecutorFunction] = {
-            &NSSnapObjects::DoObjectInflation_SnapJavascriptAsyncSpawnExecutorFunction,
-            &NSSnapObjects::DoAddtlValueInstantiation_SnapJavascriptAsyncSpawnExecutorFunction,
-            &NSSnapObjects::EmitAddtlInfo_SnapJavascriptAsyncSpawnExecutorFunction,
-            &NSSnapObjects::ParseAddtlInfo_SnapJavascriptAsyncSpawnExecutorFunction
-        };
         this->m_snapObjectVTableArray[(uint32)NSSnapObjects::SnapObjectType::JavascriptAsyncSpawnStepFunction] = {
             &NSSnapObjects::DoObjectInflation_SnapJavascriptAsyncSpawnStepFunctionInfo,
             &NSSnapObjects::DoAddtlValueInstantiation_SnapJavascriptAsyncSpawnStepFunctionInfo,

@@ -48,8 +48,12 @@ Var JavascriptAsyncFunction::EntryAsyncFunctionImplementation(
     auto* asyncFn = VarTo<JavascriptAsyncFunction>(function);
     auto* scriptFn = asyncFn->GetGeneratorVirtualScriptFunction();
     auto* generator = library->CreateGenerator(args, scriptFn, library->GetNull());
-    auto* executor = library->CreateAsyncSpawnExecutorFunction(generator, args[0]);
     auto* promise = library->CreatePromise();
+
+    auto* stepFn = library->CreateAsyncSpawnStepFunction(
+        EntryAsyncSpawnStepNextFunction,
+        generator,
+        library->GetUndefined());
 
     JavascriptExceptionObject* exception = nullptr;
     JavascriptPromiseResolveOrRejectFunction* resolve;
@@ -58,17 +62,7 @@ Var JavascriptAsyncFunction::EntryAsyncFunctionImplementation(
 
     try
     {
-        BEGIN_SAFE_REENTRANT_CALL(scriptContext->GetThreadContext())
-        {
-            CALL_FUNCTION(
-                scriptContext->GetThreadContext(),
-                executor,
-                CallInfo(CallFlags_Value, 3),
-                library->GetUndefined(),
-                resolve,
-                reject);
-        }
-        END_SAFE_REENTRANT_CALL
+        AsyncSpawnStep(stepFn, generator, resolve, reject);
     }
     catch (const JavascriptException& err)
     {
@@ -79,38 +73,6 @@ Var JavascriptAsyncFunction::EntryAsyncFunctionImplementation(
         JavascriptPromise::TryRejectWithExceptionObject(exception, reject, scriptContext);
 
     return promise;
-}
-
-Var JavascriptAsyncFunction::EntryAsyncSpawnExecutorFunction(
-    RecyclableObject* function,
-    CallInfo callInfo, ...)
-{
-    PROBE_STACK(function->GetScriptContext(), Js::Constants::MinStackDefault);
-    ARGUMENTS(args, callInfo);
-
-    ScriptContext* scriptContext = function->GetScriptContext();
-    JavascriptLibrary* library = scriptContext->GetLibrary();
-    Var undefinedVar = library->GetUndefined();
-    Var resolve = undefinedVar;
-    Var reject = undefinedVar;
-
-    Assert(args.Info.Count == 3);
-
-    resolve = args[1];
-    reject = args[2];
-
-    Assert(JavascriptConversion::IsCallable(resolve) && JavascriptConversion::IsCallable(reject));
-
-    auto* executor = VarTo<JavascriptAsyncSpawnExecutorFunction>(function);
-    Var varCallArgs[] = { undefinedVar, executor->target };
-
-    auto* stepFn = library->CreateAsyncSpawnStepFunction(
-        EntryAsyncSpawnStepNextFunction,
-        executor->generator,
-        varCallArgs);
-
-    AsyncSpawnStep(stepFn, executor->generator, resolve, reject);
-    return undefinedVar;
 }
 
 Var JavascriptAsyncFunction::EntryAsyncSpawnStepNextFunction(
@@ -274,15 +236,6 @@ void JavascriptAsyncFunction::AsyncSpawnStep(
 }
 
 template<>
-bool Js::VarIsImpl<JavascriptAsyncSpawnExecutorFunction>(RecyclableObject* obj)
-{
-    return VarIs<JavascriptFunction>(obj) && (
-        VirtualTableInfo<JavascriptAsyncSpawnExecutorFunction>::HasVirtualTable(obj) ||
-        VirtualTableInfo<CrossSiteObject<JavascriptAsyncSpawnExecutorFunction>>::HasVirtualTable(obj)
-    );
-}
-
-template<>
 bool Js::VarIsImpl<JavascriptAsyncSpawnStepFunction>(RecyclableObject* obj)
 {
     return VarIs<JavascriptFunction>(obj) && (
@@ -315,32 +268,6 @@ void JavascriptAsyncFunction::ExtractSnapObjectDataInto(TTD::NSSnapObjects::Snap
         TTDAssert(depArray != nullptr, "depArray should be non-null if depCount is > 0");
         TTD::NSSnapObjects::StdExtractSetKindSpecificInfo<TTD::NSSnapObjects::SnapGeneratorFunctionInfo*, TTD::NSSnapObjects::SnapObjectType::SnapAsyncFunction>(objData, fi, alloc, depCount, depArray);
     }
-}
-
-void JavascriptAsyncSpawnExecutorFunction::MarkVisitKindSpecificPtrs(TTD::SnapshotExtractor* extractor)
-{
-    if (this->generator != nullptr)
-    {
-        extractor->MarkVisitVar(this->generator);
-    }
-
-    if (this->target != nullptr)
-    {
-        extractor->MarkVisitVar(this->target);
-    }
-}
-
-TTD::NSSnapObjects::SnapObjectType JavascriptAsyncSpawnExecutorFunction::GetSnapTag_TTD() const
-{
-    return TTD::NSSnapObjects::SnapObjectType::JavascriptAsyncSpawnExecutorFunction;
-}
-
-void JavascriptAsyncSpawnExecutorFunction::ExtractSnapObjectDataInto(TTD::NSSnapObjects::SnapObject* objData, TTD::SlabAllocator& alloc)
-{
-    TTD::NSSnapObjects::SnapJavascriptAsyncSpawnExecutorFunctionInfo* info = alloc.SlabAllocateStruct<TTD::NSSnapObjects::SnapJavascriptAsyncSpawnExecutorFunctionInfo>();
-    info->generator= TTD_CONVERT_VAR_TO_PTR_ID(this->generator);
-    info->target = TTD_CONVERT_JSVAR_TO_TTDVAR(this->target);
-    TTD::NSSnapObjects::StdExtractSetKindSpecificInfo<TTD::NSSnapObjects::SnapJavascriptAsyncSpawnExecutorFunctionInfo*, TTD::NSSnapObjects::SnapObjectType::JavascriptAsyncSpawnExecutorFunction>(objData, info);
 }
 
 void JavascriptAsyncSpawnStepFunction::MarkVisitKindSpecificPtrs(TTD::SnapshotExtractor* extractor)

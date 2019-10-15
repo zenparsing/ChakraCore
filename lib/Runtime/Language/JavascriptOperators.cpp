@@ -10269,14 +10269,12 @@ SetElementIHelper_INDEX_TYPE_IS_NUMBER:
         JIT_HELPER_END(ImportCall);
     }
 
-    Var JavascriptOperators::OP_ResumeYield(ResumeYieldData* yieldData)
+    Var JavascriptOperators::OP_ResumeYield(Var resumeYieldObject)
     {
-        // TODO(zenparsing): [Performance] how can we optimize the general 
-        // case so that we aren't allocating a new object for every resume?
-        // Also, if we already have a Var pointer, can we lower this helper
-        // out?
+        // TODO(zenparsing): This is now a no-op in the interpreter. Should
+        // this be converted to an empty op code for the backend now?
         JIT_HELPER_NOT_REENTRANT_NOLOCK_HEADER(ResumeYield);
-        return yieldData->scriptContext->GetLibrary()->CreateInternalResumeYieldObject(yieldData);
+        return resumeYieldObject;
         JIT_HELPER_END(ResumeYield);
     }
 

@@ -1970,18 +1970,17 @@ skipThunk:
             // If the FunctionBody is a generator then this call is being made by one of the three
             // generator resuming methods: next(), throw(), or return().  They all pass the generator
             // object as the first of two arguments.  The real user arguments are obtained from the
-            // generator object.  The second argument is the ResumeYieldData which is only needed
+            // generator object.  The second argument is the resume yield object which is only needed
             // when resuming a generator and so it is only used here if a frame already exists on the
             // generator object.
-            AssertOrFailFastMsg(args.Info.Count == 2 && ((args.Info.Flags & CallFlags_ExtraArg) == CallFlags_None), "Generator ScriptFunctions should only be invoked by generator APIs with the pair of arguments they pass in -- the generator object and a ResumeYieldData pointer");
+            AssertOrFailFastMsg(args.Info.Count == 2 && ((args.Info.Flags & CallFlags_ExtraArg) == CallFlags_None), "Generator ScriptFunctions should only be invoked by generator APIs with the pair of arguments they pass in -- the generator object and a resume yield object");
 
             JavascriptGenerator* generator = VarTo<JavascriptGenerator>(args[0]);
             newInstance = generator->GetFrame();
 
             if (newInstance != nullptr)
             {
-                ResumeYieldData* resumeYieldData = static_cast<ResumeYieldData*>(args[1]);
-                newInstance->SetNonVarReg(executeFunction->GetYieldRegister(), resumeYieldData);
+                newInstance->SetNonVarReg(executeFunction->GetYieldRegister(), args[1]);
 
                 // The debugger relies on comparing stack addresses of frames to decide when a step_out is complete so
                 // give the InterpreterStackFrame a legit enough stack address to make this comparison work.
@@ -9467,9 +9466,10 @@ skipThunk:
         return (void*)m_inSlotsCount;
     }
 
-    Var InterpreterStackFrame::OP_ResumeYield(Var yieldDataVar)
+    Var InterpreterStackFrame::OP_ResumeYield(Var yieldResumeObject)
     {
-        return JavascriptOperators::OP_ResumeYield(static_cast<ResumeYieldData*>(yieldDataVar));
+        // TODO(zenparsing): No-op!
+        return JavascriptOperators::OP_ResumeYield(yieldResumeObject);
     }
 
     void* InterpreterStackFrame::operator new(size_t byteSize, void* previousAllocation) throw()

@@ -14,18 +14,6 @@ enum class ResumeYieldKind
     Return
 };
 
-struct ResumeYieldData
-{
-    ScriptContext* scriptContext;
-    Var data;
-    ResumeYieldKind kind;
-
-    ResumeYieldData(ScriptContext* scriptContext, Var data, ResumeYieldKind kind) :
-        scriptContext(scriptContext),
-        data(data),
-        kind(kind) {}
-};
-
 class JavascriptGenerator : public DynamicObject
 {
 public:
@@ -71,6 +59,7 @@ private:
     Field(GeneratorState) state;
     Field(Arguments) args;
     Field(ScriptFunction*) scriptFunction;
+    Field(DynamicObject*) resumeYieldObject;
 
 protected:
     DEFINE_VTABLE_CTOR_MEMBER_INIT(JavascriptGenerator, DynamicObject, args);

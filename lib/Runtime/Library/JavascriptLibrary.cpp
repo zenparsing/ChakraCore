@@ -6143,25 +6143,6 @@ namespace Js
         return RecyclerNew(this->GetRecycler(), JavascriptPromise, promiseType);
     }
 
-    JavascriptAsyncSpawnExecutorFunction* JavascriptLibrary::CreateAsyncSpawnExecutorFunction(
-        JavascriptGenerator* generator,
-        Var target)
-    {
-        JavascriptMethod entryPoint = JavascriptAsyncFunction::EntryAsyncSpawnExecutorFunction;
-        FunctionInfo* functionInfo = RecyclerNew(GetRecycler(), FunctionInfo, entryPoint);
-        DynamicType* type = CreateDeferredPrototypeFunctionType(
-            this->inDispatchProfileMode ? ProfileEntryThunk : entryPoint);
-
-        return RecyclerNewEnumClass(
-            GetRecycler(),
-            EnumFunctionClass,
-            JavascriptAsyncSpawnExecutorFunction,
-            type,
-            functionInfo,
-            generator,
-            target);
-    }
-
     JavascriptAsyncSpawnStepFunction* JavascriptLibrary::CreateAsyncSpawnStepFunction(
         JavascriptMethod entryPoint,
         JavascriptGenerator* generator,
@@ -7054,11 +7035,13 @@ namespace Js
         return awaitObject;
     }
 
-    DynamicObject* JavascriptLibrary::CreateInternalResumeYieldObject(ResumeYieldData* resumeData)
+    DynamicObject* JavascriptLibrary::CreateInternalResumeYieldObject(
+        Var value,
+        ResumeYieldKind kind)
     {
-        Var kindVar = TaggedInt::ToVarUnchecked((int)resumeData->kind);
+        Var kindVar = TaggedInt::ToVarUnchecked((int)kind);
         auto* resumeObject = DynamicObject::New(GetRecycler(), internalResumeYieldObjectType);
-        resumeObject->SetSlot(SetSlotArguments(Js::PropertyIds::value, 0, resumeData->data));
+        resumeObject->SetSlot(SetSlotArguments(Js::PropertyIds::value, 0, value));
         resumeObject->SetSlot(SetSlotArguments(Js::PropertyIds::kind, 1, kindVar));
         return resumeObject;
     }

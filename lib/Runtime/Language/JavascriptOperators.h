@@ -639,7 +639,7 @@ namespace Js
         static Var OP_LdFuncObjProto(Var aRight, ScriptContext* scriptContext);
         static Var OP_ImportCall(__in JavascriptFunction *function, __in Var specifier, __in ScriptContext* scriptContext);
 
-        static Var OP_ResumeYield(ResumeYieldData* yieldData);
+        static Var OP_ResumeYield(Var resumeYieldObject);
 
         static Var OP_NewAwaitObject(Var value, ScriptContext* scriptContext);
 
