@@ -2123,6 +2123,12 @@ JsErrorCode WScriptJsrt::FetchImportedModule(_In_ JsModuleRecord referencingModu
 JsErrorCode WScriptJsrt::FetchImportedModuleFromScript(_In_ JsSourceContext dwReferencingSourceContext,
     _In_ JsValueRef specifier, _Outptr_result_maybenull_ JsModuleRecord* dependentModuleRecord)
 {
+    auto scriptDirEntry = scriptDirMap.find(dwReferencingSourceContext);
+    if (scriptDirEntry != scriptDirMap.end())
+    {
+        std::string dir = scriptDirEntry->second;
+        return FetchImportedModuleHelper(nullptr, specifier, dependentModuleRecord, dir.c_str());
+    }
     return FetchImportedModuleHelper(nullptr, specifier, dependentModuleRecord);
 }
 
@@ -2237,4 +2243,3 @@ void WScriptJsrt::PromiseRejectionTrackerCallback(JsValueRef promise, JsValueRef
 
     fflush(stdout);
 }
-
